@@ -6,9 +6,9 @@ body {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   background-color: #013369;
-  background-image: url("data:image/svg+xml;base64,PHN2ZyB4bWxucz0naHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmcnIHdpZHRoPSc2MCcgaGVpZ2h0PSc0MCcgdmlld0JveD0nMCAwIDYwIDQwJz4KICA8ZWxsaXBzZSBjeD0nMzAnIGN5PScyMCcgcng9JzI4JyByeT0nMTgnIGZpbGw9JyM4QjQ1MTMnIHN0cm9rZT0nIzhCNDUxMycgc3Ryb2tlLXdpZHRoPScyJy8+CiAgPGxpbmUgeDE9JzEyJyB5MT0nMjAnIHgyPSc0OCcgeTI9JzIwJyBzdHJva2U9J3doaXRlJyBzdHJva2Utd2lkdGg9JzInLz4KICA8bGluZSB4MT0nMjInIHkxPScxNScgeDI9JzIyJyB5Mj0nMjUnIHN0cm9rZT0nd2hpdGUnIHN0cm9rZS13aWR0aD0nMicvPgogIDxsaW5lIHgxPSczMCcgeTE9JzE1JyB4Mj0nMzAnIHkyPScyNScgc3Ryb2tlPSd3aGl0ZScgc3Ryb2tlLXdpZHRoPScyJy8+CiAgPGxpbmUgeDE9JzM4JyB5MT0nMTUnIHgyPSczOCcgeTI9JzI1JyBzdHJva2U9J3doaXRlJyBzdHJva2Utd2lkdGg9JzInLz4KPC9zdmc+Cg==");
-  background-repeat: repeat;
-  background-size: 80px 60px;
+  background-image: url('/football-field.svg');
+  background-repeat: no-repeat;
+  background-size: cover;
   position: relative;
 }
 
