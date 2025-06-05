@@ -16,7 +16,7 @@ body::before {
   content: "";
   position: fixed;
   inset: 0;
-  background: rgba(1, 20, 50, 0.5); /* Adjust opacity as needed */
+  background: rgba(1, 20, 50, 0.8); /* Adjust opacity as needed */
   z-index: 0;
   pointer-events: none;
 }
