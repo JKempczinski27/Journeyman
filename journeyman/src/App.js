@@ -2,6 +2,8 @@
 import React, { useState, useEffect } from 'react';
 import { Box, Typography, TextField, Button, Grid, Switch, FormControlLabel, Stack } from '@mui/material';
 import teamLogos from './TeamLogos.js';
+import './App.css'; // Assuming you have some basic styles in App.css
+
 
 const playersData = [
 	{
@@ -91,12 +93,56 @@ export default function App() {
 					color: 'white',
 					position: 'relative',
 					zIndex: 1,
+					px: 2,
 				}}
 			>
-				<Typography variant="h2" gutterBottom sx={{ fontWeight: 'bold', letterSpacing: 2 }}>
+				<Typography variant="h2" gutterBottom sx={{ fontWeight: 'bold', letterSpacing: 2, fontFamily: 'Endzone' }}>
 					Journeyman
 				</Typography>
-				<Typography variant="h5" gutterBottom>
+				<Box
+					sx={{
+						maxWidth: 500,
+						bgcolor: 'rgba(0,0,0,0.5)',
+						borderRadius: 2,
+						p: 3,
+						mb: 4,
+						boxShadow: 3,
+						display: 'flex',
+						flexDirection: 'column',
+						alignItems: 'center',
+						justifyContent: 'center',
+						textAlign: 'center', // Center text horizontally
+					}}
+				>
+					<Typography variant="body1" paragraph sx={{ fontSize: '0.750rem' }}>
+						Some NFL players stay loyal to one team their whole career.<br />
+						Others get traded so much their U-Haul has a loyalty card.<br />
+						Your job? Look at the logos from every team they've played for and guess the mystery player.
+					</Typography>
+					<Typography variant="subtitle1" sx={{ fontWeight: 'bold', mt: 2 }}>
+						🔍 Modes:
+					</Typography>
+					<Typography variant="body2" sx={{ ml: 2, fontSize: '0.750rem' }}>
+						🟢 <b>Easy Mode:</b><br />
+						You get the logos in order of when they played there. It’s like using bumpers at a bowling alley—no shame.
+					</Typography>
+					<Typography variant="body2" sx={{ ml: 2, mt: 1, fontSize: '0.750rem' }}>
+						🔴 <b>Challenge Mode:</b><br />
+						Same logos, no order.<br />
+						Could be first, last, middle—pure chaos. Just like their career path.
+					</Typography>
+					<Typography variant="subtitle1" sx={{ fontWeight: 'bold', mt: 2, fontSize: '0.850 rem' }}>
+						📜 Rules (well, suggestions, really):
+					</Typography>
+					<Typography variant="body2" sx={{ ml: 2, fontSize: '0.750rem' }}>
+						• Guess the player based on their team history.<br />
+						• No Googling. Pretend it’s 2004 and you’re using pure memory.<br />
+						• Spelling matters. “Ochocinco” = ✅, “Ochochoco” = 🍫🚫<br />
+						• Limited guesses. Don’t just shotgun “McCown” every time (even if odds are decent).<br />
+						• <i>Tip:</i> If you see 6 logos and none of them are the Patriots, it’s probably not Tom Brady.
+					</Typography>
+				</Box>
+				<Typography variant="h5" sx={{ fontFamily:'Endzone' }} gutterBottom>
 					Choose your mode
 				</Typography>
 				<Stack direction="row" spacing={4} mt={4}>
