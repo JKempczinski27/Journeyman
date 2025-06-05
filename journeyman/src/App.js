@@ -1,6 +1,6 @@
 // src/JourneymanGame.jsx
 import React, { useState, useEffect } from 'react';
-import { Box, Typography, TextField, Button, Grid, Switch, FormControlLabel, Stack } from '@mui/material';
+import { Box, Typography, TextField, Button, Grid, Stack } from '@mui/material';
 import teamLogos from './TeamLogos.js';
 import './App.css'; // Assuming you have some basic styles in App.css
 
@@ -8,6 +8,7 @@ import './App.css'; // Assuming you have some basic styles in App.css
 const playersData = [
 	{
 		name: 'Ryan Fitzpatrick',
+		image: '/images/fitzpatrick.png', // adjust path as needed
 		teams: [
 			'Los Angeles Rams',
 			'Cincinnati Bengals',
@@ -22,6 +23,7 @@ const playersData = [
 	},
 	{
 		name: 'Josh McCown',
+		image: '/images/mccown.png', // adjust path as needed
 		teams: [
 			'Arizona Cardinals',
 			'Detroit Lions',
@@ -105,7 +107,7 @@ export default function App() {
 						bgcolor: 'rgba(0,0,0,0.5)',
 						borderRadius: 2,
 						p: 3,
-						mb: 4,
+						mb: 8,
 						boxShadow: 3,
 						display: 'flex',
 						flexDirection: 'column',
@@ -116,22 +118,22 @@ export default function App() {
 				>
 					<Typography variant="body1" paragraph sx={{ fontSize: '0.750rem' }}>
 						Some NFL players stay loyal to one team their whole career.<br />
-						Others get traded so much their U-Haul has a loyalty card.<br />
+						Others switched teams like it was part of a witness protection program.<br />
 						Your job? Look at the logos from every team they've played for and guess the mystery player.
 					</Typography>
-					<Typography variant="subtitle1" sx={{ fontWeight: 'bold', mt: 2 }}>
+					<Typography variant="subtitle1" sx={{ fontWeight: 'bold', mt: 4 }}>
 						🔍 Modes:
 					</Typography>
 					<Typography variant="body2" sx={{ ml: 2, fontSize: '0.750rem' }}>
 						🟢 <b>Easy Mode:</b><br />
 						You get the logos in order of when they played there. It’s like using bumpers at a bowling alley—no shame.
 					</Typography>
-					<Typography variant="body2" sx={{ ml: 2, mt: 1, fontSize: '0.750rem' }}>
+					<Typography variant="body2" sx={{ ml: 2, mt: 2, fontSize: '0.750rem' }}>
 						🔴 <b>Challenge Mode:</b><br />
 						Same logos, no order.<br />
 						Could be first, last, middle—pure chaos. Just like their career path.
 					</Typography>
-					<Typography variant="subtitle1" sx={{ fontWeight: 'bold', mt: 2, fontSize: '0.850 rem' }}>
+					<Typography variant="subtitle1" sx={{ fontWeight: 'bold', mt: 4, fontSize: '0.850 rem' }}>
 						📜 Rules (well, suggestions, really):
 					</Typography>
 					<Typography variant="body2" sx={{ ml: 2, fontSize: '0.750rem' }}>
@@ -175,45 +177,70 @@ export default function App() {
 
 	// Game page
 	return (
-		<Box sx={{ padding: 4, textAlign: 'center', color: 'white' }}>
+		<Box sx={{ padding: 4, textAlign: 'center', color: 'white', fontFamily: 'Endzone', fontWeight: 'bold' }}>
 			<Typography variant="h4" gutterBottom>
 				Guess the Player
 			</Typography>
-			{!challengeMode && (
-				<FormControlLabel
-					control={
-						<Switch
-							checked={challengeMode}
-							onChange={() => setChallengeMode((prev) => !prev)}
-							color="primary"
-						/>
-					}
-					label="Challenge Mode (Shuffle Teams)"
-					sx={{ mb: 2 }}
+			<Box
+				sx={{
+					display: 'flex',
+					justifyContent: 'center',
+					alignItems: 'center',
+					mb: 8,
+				}}
+			>
+				<img
+					src={currentPlayer.image}
+					alt={currentPlayer.name}
+					width={160}
+					height={160}
+					style={{
+						borderRadius: '50%',
+						objectFit: 'cover',
+						filter: feedback === '✅ Correct!' ? 'none' : 'grayscale(1) brightness(0.1)',
+						transition: 'filter 0.4s',
+						border: '4px solid white',
+						background: '#222',
+					}}
 				/>
-			)}
-			<Grid container spacing={10} justifyContent="center" mt={6}>
+			</Box>
+			<Box
+				sx={{
+					display: 'flex',
+					justifyContent: 'center',
+					alignItems: 'center',
+					gap: 4, // space between logos
+					mt: 9,
+					mb: 8,
+				}}
+			>
 				{shuffledTeams.map((team) => (
-					<Grid item key={team}>
-						<Box
-							sx={{
-								display: 'flex',
-								alignItems: 'center',
-								justifyContent: 'center',
-								width: 70,
-								height: 45,
-								background: 'none',
-								border: 'none',
-								boxShadow: 'none',
-								clipPath: 'none',
-							}}
-						>
-							<img src={teamLogos[team]} alt={team} width={200} height={160} />
-						</Box>
-					</Grid>
+					<Box
+						key={team}
+						sx={{
+							display: 'flex',
+							alignItems: 'center',
+							justifyContent: 'center',
+							width: 110,
+							height: 110,
+							background: 'white',
+							borderRadius: 3,
+							boxShadow: 3,
+							border: '2px solid #eee',
+							p: 1,
+						}}
+					>
+						<img
+							src={teamLogos[team]}
+							alt={team}
+							width={80}
+							height={80}
+							style={{ objectFit: 'contain' }}
+						/>
+					</Box>
 				))}
-			</Grid>
-			<Box mt={5}>
+			</Box>
+			<Box mt={8}>
 				<TextField
 					value={guess}
 					onChange={(e) => setGuess(e.target.value)}
@@ -222,7 +249,7 @@ export default function App() {
 					sx={{ backgroundColor: 'white', borderRadius: 1 }}
 				/>
 			</Box>
-			<Box mt={2}>
+			<Box mt={4}>
 				<Button variant="contained" onClick={handleGuess}>
 					Submit
 				</Button>
@@ -230,7 +257,7 @@ export default function App() {
 			<Box mt={2}>
 				<Typography>{feedback}</Typography>
 				{feedback === '✅ Correct!' && (
-					<Button onClick={nextPlayer} sx={{ mt: 2 }}>
+					<Button onClick={nextPlayer} sx={{ mt: 4 }}>
 						Next Player
 					</Button>
 				)}
