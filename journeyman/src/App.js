@@ -150,22 +150,32 @@ export default function App() {
 				<Stack direction="row" spacing={4} mt={4}>
 					<Button
 						variant="contained"
-						color="primary"
 						size="large"
 						onClick={() => {
 							setChallengeMode(false);
 							setPage('game');
+						}}
+						sx={{
+							backgroundColor: '#0B6623',
+							'&:hover': {
+								backgroundColor: '#08511a',
+							},
 						}}
 					>
 						Easy Mode
 					</Button>
 					<Button
 						variant="contained"
-						color="secondary"
 						size="large"
 						onClick={() => {
 							setChallengeMode(true);
 							setPage('game');
+						}}
+						sx={{
+							backgroundColor: '#D30000',
+							'&:hover': {
+								backgroundColor: '#a80000',
+							},
 						}}
 					>
 						Challenge Mode
@@ -177,9 +187,9 @@ export default function App() {
 
 	// Game page
 	return (
-		<Box sx={{ padding: 4, textAlign: 'center', color: 'white', fontFamily: 'Endzone', fontWeight: 'bold' }}>
-			<Typography variant="h4" gutterBottom>
-				Guess the Player
+		<Box sx={{ padding: 4, textAlign: 'center', color: 'white', fontWeight: 'bold', fontFamily: 'Endzone' }}>
+			<Typography variant="h4" gutterBottom sx={{ fontFamily: 'Endzone' }}>
+				Who Am I?
 			</Typography>
 			<Box
 				sx={{
@@ -246,18 +256,21 @@ export default function App() {
 					onChange={(e) => setGuess(e.target.value)}
 					placeholder="Enter player name"
 					variant="outlined"
-					sx={{ backgroundColor: 'white', borderRadius: 1 }}
+					sx={{ backgroundColor: 'white', borderRadius: 1, width: '500px', fontFamily: 'Endzone' }}
+					InputProps={{
+						style: { fontFamily: 'Endzone' }
+					}}
 				/>
 			</Box>
 			<Box mt={4}>
-				<Button variant="contained" onClick={handleGuess}>
+				<Button variant="contained" onClick={handleGuess} sx={{ fontFamily: 'Endzone' }}>
 					Submit
 				</Button>
 			</Box>
 			<Box mt={2}>
-				<Typography>{feedback}</Typography>
+				<Typography sx={{ fontFamily: 'Endzone' }}>{feedback}</Typography>
 				{feedback === '✅ Correct!' && (
-					<Button onClick={nextPlayer} sx={{ mt: 4 }}>
+					<Button onClick={nextPlayer} sx={{ mt: 4, fontFamily: 'Endzone' }}>
 						Next Player
 					</Button>
 				)}
