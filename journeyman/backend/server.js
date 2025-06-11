@@ -31,3 +31,12 @@ app.post('/save-player', (req, res) => {
 const PORT = process.env.PORT || 3001;
 
 app.listen(PORT, () => console.log(`Backend listening on port ${PORT}`));
+
+// Handle uncaught exceptions and unhandled promise rejections
+process.on('uncaughtException', (err) => {
+  console.error('Uncaught exception:', err);
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('Unhandled rejection at:', promise, 'reason:', reason);
+});
