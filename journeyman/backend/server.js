@@ -4,12 +4,16 @@ const cors = require('cors');
 const path = require('path');
 
 const app = express();
-app.use(cors({
-  origin: [
-    'http://localhost:3000',
-    'https://journeyman.vercel.app'
-  ]
-}));
+
+const corsOptions = {
+  origin: 'https://journeyman.vercel.app', // ✅ exactly this
+  methods: ['GET', 'POST', 'OPTIONS'],
+  allowedHeaders: ['Content-Type'],
+};
+
+app.use(cors(corsOptions));
+app.options('*', cors(corsOptions)); // preflight support
+
 app.use(express.json());
 
 const filePath = path.join(__dirname, 'players.json');
