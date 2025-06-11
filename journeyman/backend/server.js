@@ -9,6 +9,11 @@ app.use(express.json());
 
 const filePath = path.join(__dirname, 'players.json');
 
+// Create file if it doesn't exist
+if (!fs.existsSync(filePath)) {
+  fs.writeFileSync(filePath, JSON.stringify([]));
+}
+
 app.post('/save-player', (req, res) => {
   const { name, email } = req.body;
 
