@@ -99,7 +99,7 @@ export default function App() {
 
         // Send name/email to backend JSON writer
         try {
-            const response = await fetch('http://localhost:3001/save-player', {
+            const response = await fetch('https://journeyman-production.up.railway.app/save-player', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
