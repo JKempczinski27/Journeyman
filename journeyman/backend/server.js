@@ -23,4 +23,6 @@ app.post('/save-player', (req, res) => {
   res.json({ success: true });
 });
 
-app.listen(3001, () => console.log('Backend listening on port 3001'));
+const PORT = process.env.PORT || 3001;
+
+app.listen(PORT, () => console.log(`Backend listening on port ${PORT}`));
