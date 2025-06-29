@@ -12,7 +12,7 @@ const PlayerForm = () => {
       const response = await fetch('https://your-backend.up.railway.app/save-player', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, email }),
+        body: JSON.stringify(gameData),
       });
 
       const result = await response.json();

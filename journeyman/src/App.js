@@ -56,6 +56,11 @@ export default function App() {
     const [playerName, setPlayerName] = useState('');
     const [playerEmail, setPlayerEmail] = useState('');
     const [formError, setFormError] = useState('');
+    const [startTime, setStartTime] = useState(null);
+    const [durationInSeconds, setDurationInSeconds] = useState(0);
+    const [guesses, setGuesses] = useState([]);
+    const [correctCount, setCorrectCount] = useState(0);
+    const [sharedOnSocial, setSharedOnSocial] = useState(false);
 
     const currentPlayer = playersData[currentIndex];
 
@@ -68,9 +73,19 @@ export default function App() {
         // eslint-disable-next-line
     }, [currentIndex, challengeMode]);
 
+    useEffect(() => {
+        if (page === 'game') {
+            setStartTime(Date.now());
+        }
+    }, [page]);
+
     const handleGuess = () => {
-        if (guess.trim().toLowerCase() === currentPlayer.name.toLowerCase()) {
+        const trimmedGuess = guess.trim();
+        setGuesses(prev => [...prev, trimmedGuess]);
+
+        if (trimmedGuess.toLowerCase() === currentPlayer.name.toLowerCase()) {
             setFeedback('✅ Correct!');
+            setCorrectCount(prev => prev + 1);
         } else {
             setFeedback('❌ Try again!');
         }
@@ -80,6 +95,33 @@ export default function App() {
         setFeedback('');
         setGuess('');
         setCurrentIndex((prev) => (prev + 1) % playersData.length);
+    };
+
+    const sendGameData = async (durationOverride) => {
+        try {
+            await fetch('https://journeyman-production.up.railway.app/save-player', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    name: playerName,
+                    email: playerEmail,
+                    mode: challengeMode ? 'challenge' : 'easy',
+                    durationInSeconds: durationOverride ?? durationInSeconds,
+                    guesses,
+                    correctCount,
+                    sharedOnSocial
+                }),
+            });
+        } catch (err) {
+            console.error('Failed to send game data:', err);
+        }
+    };
+
+    const endGame = () => {
+        const endTime = Date.now();
+        const duration = Math.floor((endTime - startTime) / 1000);
+        setDurationInSeconds(duration);
+        sendGameData(duration);
     };
 
     const handleFormSubmit = async (e) => {
@@ -388,6 +430,7 @@ export default function App() {
                     target="_blank"
                     rel="noopener noreferrer"
                     aria-label="Share on Facebook"
+                    onClick={() => setSharedOnSocial(true)}
                 >
                     <img src="https://cdn.jsdelivr.net/npm/simple-icons@v11/icons/facebook.svg" alt="Facebook" width={32} height={32} style={{ filter: 'invert(1)' }} />
                 </a>
@@ -396,6 +439,7 @@ export default function App() {
                     target="_blank"
                     rel="noopener noreferrer"
                     aria-label="Share on Twitter"
+                    onClick={() => setSharedOnSocial(true)}
                 >
                     <img src="https://cdn.jsdelivr.net/npm/simple-icons@v11/icons/x.svg" alt="Twitter/X" width={32} height={32} style={{ filter: 'invert(1)' }} />
                 </a>
@@ -404,6 +448,7 @@ export default function App() {
                     target="_blank"
                     rel="noopener noreferrer"
                     aria-label="Share on Reddit"
+                    onClick={() => setSharedOnSocial(true)}
                 >
                     <img src="https://cdn.jsdelivr.net/npm/simple-icons@v11/icons/reddit.svg" alt="Reddit" width={32} height={32} style={{ filter: 'invert(1)' }} />
                 </a>
@@ -412,6 +457,7 @@ export default function App() {
                     target="_blank"
                     rel="noopener noreferrer"
                     aria-label="Share on WhatsApp"
+                    onClick={() => setSharedOnSocial(true)}
                 >
                     <img src="https://cdn.jsdelivr.net/npm/simple-icons@v11/icons/whatsapp.svg" alt="WhatsApp" width={32} height={32} style={{ filter: 'invert(1)' }} />
                 </a>

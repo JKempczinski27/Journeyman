@@ -1,67 +1,43 @@
 const express = require('express');
-const cors = require('cors');
 const fs = require('fs');
-const path = require('path');
-
+const cors = require('cors');
 const app = express();
+const PORT = process.env.PORT || 3001;
 
-// ✅ Set correct origin for Vercel
-const corsOptions = {
-  origin: 'https://journeyman.vercel.app',
-  methods: ['GET', 'POST', 'OPTIONS'],
-  allowedHeaders: ['Content-Type'],
-};
-
-app.use(cors(corsOptions)); // Apply CORS to all requests
-app.options('*', cors(corsOptions)); // Handle preflight requests
-
+app.use(cors());
 app.use(express.json());
 
-const filePath = path.join('/tmp', 'players.json');
-
-// ✅ Create the JSON file if it doesn't exist
-if (!fs.existsSync(filePath)) {
-  fs.writeFileSync(filePath, JSON.stringify([]));
-}
-
 app.post('/save-player', (req, res) => {
-  const { name, email } = req.body;
-  console.log('Received:', name, email);
+    const {
+        name,
+        email,
+        mode,
+        durationInSeconds,
+        guesses,
+        correctCount,
+        sharedOnSocial
+    } = req.body;
 
-  let data = [];
+    const logEntry = {
+        name,
+        email,
+        mode,
+        durationInSeconds,
+        guesses,
+        correctCount,
+        sharedOnSocial,
+        timestamp: new Date().toISOString()
+    };
 
-  try {
-    const fileData = fs.readFileSync(filePath, 'utf-8');
-    data = fileData ? JSON.parse(fileData) : [];
-  } catch (err) {
-    console.error('Error reading file:', err);
-  }
-
-  data.push({ name, email, timestamp: new Date().toISOString() });
-
-  try {
-    fs.writeFileSync(filePath, JSON.stringify(data, null, 2));
-    res.json({ success: true });
-  } catch (err) {
-    console.error('Error writing file:', err);
-    res.status(500).json({ success: false, message: 'Write failed' });
-  }
+    try {
+        fs.appendFileSync('players.json', JSON.stringify(logEntry) + '\n');
+        res.json({ success: true });
+    } catch (error) {
+        console.error('Error saving player data:', error);
+        res.status(500).json({ success: false, error: 'Failed to save player data' });
+    }
 });
 
-app.get('/', (req, res) => {
-  res.send('Backend is running and CORS is enabled.');
-});
-
-const PORT = process.env.PORT || 8080;
 app.listen(PORT, () => {
-  console.log(`Backend listening on port ${PORT}`);
-});
-
-// Handle uncaught exceptions and unhandled promise rejections
-process.on('uncaughtException', (err) => {
-  console.error('Uncaught exception:', err);
-});
-
-process.on('unhandledRejection', (reason, promise) => {
-  console.error('Unhandled rejection at:', promise, 'reason:', reason);
+    console.log(`Server is running on port ${PORT}`);
 });
