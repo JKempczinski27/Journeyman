@@ -86,10 +86,6 @@ export default function App() {
         if (trimmedGuess.toLowerCase() === currentPlayer.name.toLowerCase()) {
             setFeedback('✅ Correct!');
             setCorrectCount(prev => prev + 1);
-            // Send game data when player gets correct answer
-            setTimeout(() => {
-                endGame();
-            }, 2000); // Wait 2 seconds to show the success message
         } else {
             setFeedback('❌ Try again!');
         }
@@ -438,11 +434,33 @@ export default function App() {
             <Box mt={2}>
                 <Typography sx={{ fontFamily: 'Endzone' }}>{feedback}</Typography>
                 {feedback === '✅ Correct!' && (
-                    <Button onClick={nextPlayer} sx={{ mt: 4, fontFamily: 'Endzone' }}>
-                        Next Player
-                    </Button>
+                    <Box mt={4} display="flex" gap={2} justifyContent="center">
+                        <Button 
+                            onClick={nextPlayer} 
+                            variant="contained"
+                            sx={{ fontFamily: 'Endzone' }}
+                        >
+                            Next Player
+                        </Button>
+                        <Button 
+                            onClick={endGame} 
+                            variant="outlined"
+                            sx={{ 
+                                fontFamily: 'Endzone', 
+                                color: 'white', 
+                                borderColor: 'white',
+                                '&:hover': {
+                                    borderColor: 'lightgray',
+                                    color: 'lightgray'
+                                }
+                            }}
+                        >
+                            Finish Game
+                        </Button>
+                    </Box>
                 )}
             </Box>
+            
             <Box mt={4} display="flex" justifyContent="center" gap={2}>
                 <a
                     href="https://www.facebook.com/sharer/sharer.php?u=https://yourgameurl.com"
