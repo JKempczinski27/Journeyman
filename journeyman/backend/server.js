@@ -21,16 +21,19 @@ app.post('/save-player', (req, res) => {
     const logEntry = {
         name,
         email,
-        mode,
-        durationInSeconds,
-        guesses,
-        correctCount,
-        sharedOnSocial,
+        mode: mode || 'form-submission',
+        durationInSeconds: durationInSeconds || 0,
+        guesses: guesses || [],
+        correctCount: correctCount || 0,
+        sharedOnSocial: sharedOnSocial || false,
         timestamp: new Date().toISOString()
     };
 
+    console.log('Player data received:', logEntry);
+
     try {
         fs.appendFileSync('players.json', JSON.stringify(logEntry) + '\n');
+        console.log('Player data saved successfully');
         res.json({ success: true });
     } catch (error) {
         console.error('Error saving player data:', error);

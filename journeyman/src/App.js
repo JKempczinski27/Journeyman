@@ -86,6 +86,10 @@ export default function App() {
         if (trimmedGuess.toLowerCase() === currentPlayer.name.toLowerCase()) {
             setFeedback('✅ Correct!');
             setCorrectCount(prev => prev + 1);
+            // Send game data when player gets correct answer
+            setTimeout(() => {
+                endGame();
+            }, 2000); // Wait 2 seconds to show the success message
         } else {
             setFeedback('❌ Try again!');
         }
@@ -412,8 +416,23 @@ export default function App() {
                 />
             </Box>
             <Box mt={4}>
-                <Button variant="contained" onClick={handleGuess} sx={{ fontFamily: 'Endzone' }}>
+                <Button variant="contained" onClick={handleGuess} sx={{ fontFamily: 'Endzone', mr: 2 }}>
                     Submit
+                </Button>
+                <Button 
+                    variant="outlined" 
+                    onClick={endGame} 
+                    sx={{ 
+                        fontFamily: 'Endzone', 
+                        color: 'white', 
+                        borderColor: 'white',
+                        '&:hover': {
+                            borderColor: 'lightgray',
+                            color: 'lightgray'
+                        }
+                    }}
+                >
+                    Quit Game
                 </Button>
             </Box>
             <Box mt={2}>
