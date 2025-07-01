@@ -350,7 +350,6 @@ export default function App() {
             >
                 <img
                     src={currentPlayer.image}
-                    alt={currentPlayer.name}
                     width={160}
                     height={160}
                     style={{
