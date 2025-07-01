@@ -83,21 +83,31 @@ app.post('/save-player', async (req, res) => {
       });
     }
 
-    // Insert or get player
+    // Insert or get player (prevent duplicates)
     let playerId;
+    const cleanEmail = email.toLowerCase().trim();
+    const cleanName = name.trim();
+    
     const playerResult = await client.query(
       'SELECT id FROM players WHERE email = $1',
-      [email.toLowerCase().trim()]
+      [cleanEmail]
     );
 
     if (playerResult.rows.length > 0) {
       playerId = playerResult.rows[0].id;
+      // Update name if it's different (in case user entered different capitalization)
+      await client.query(
+        'UPDATE players SET name = $1 WHERE id = $2',
+        [cleanName, playerId]
+      );
+      console.log(`🔄 Found existing player: ${cleanName} (${cleanEmail})`);
     } else {
       const newPlayerResult = await client.query(
         'INSERT INTO players (name, email) VALUES ($1, $2) RETURNING id',
-        [name.trim(), email.toLowerCase().trim()]
+        [cleanName, cleanEmail]
       );
       playerId = newPlayerResult.rows[0].id;
+      console.log(`✨ Created new player: ${cleanName} (${cleanEmail})`);
     }
 
     // If this is just a form submission (no game data), we're done
