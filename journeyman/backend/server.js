@@ -42,11 +42,38 @@ async function initializeDatabase() {
       )
     `);
 
+    // Create player_profiles table for cached profile data
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS player_profiles (
+        id SERIAL PRIMARY KEY,
+        player_id INTEGER REFERENCES players(id) UNIQUE,
+        skill_level VARCHAR(50) DEFAULT 'Beginner',
+        player_type VARCHAR(50) DEFAULT 'Casual Player',
+        engagement_level VARCHAR(50) DEFAULT 'Low Engagement',
+        total_games INTEGER DEFAULT 0,
+        avg_correct DECIMAL(5,2) DEFAULT 0,
+        avg_duration INTEGER DEFAULT 0,
+        avg_guesses DECIMAL(5,2) DEFAULT 0,
+        challenge_games INTEGER DEFAULT 0,
+        easy_games INTEGER DEFAULT 0,
+        social_shares INTEGER DEFAULT 0,
+        best_score INTEGER DEFAULT 0,
+        fastest_time INTEGER DEFAULT 0,
+        insights JSONB DEFAULT '[]',
+        recommendations JSONB DEFAULT '[]',
+        last_calculated TIMESTAMP DEFAULT NOW(),
+        created_at TIMESTAMP DEFAULT NOW()
+      )
+    `);
+
     // Create index for better performance
     await pool.query(`
       CREATE INDEX IF NOT EXISTS idx_players_email ON players(email);
       CREATE INDEX IF NOT EXISTS idx_game_sessions_player_id ON game_sessions(player_id);
       CREATE INDEX IF NOT EXISTS idx_game_sessions_created_at ON game_sessions(created_at);
+      CREATE INDEX IF NOT EXISTS idx_player_profiles_player_id ON player_profiles(player_id);
+      CREATE INDEX IF NOT EXISTS idx_player_profiles_skill_level ON player_profiles(skill_level);
+      CREATE INDEX IF NOT EXISTS idx_player_profiles_engagement ON player_profiles(engagement_level);
     `);
 
     console.log('✅ Database tables initialized successfully');
@@ -139,6 +166,9 @@ app.post('/save-player', async (req, res) => {
     ]);
 
     await client.query('COMMIT');
+
+    // Update player profile after game session
+    await updatePlayerProfile(playerId);
 
     const logEntry = {
       playerId,
@@ -287,6 +317,165 @@ app.get('/health', async (req, res) => {
   }
 });
 
+// Player profiling endpoint (uses stored profiles)
+app.get('/player-profile/:email?', async (req, res) => {
+  try {
+    const { email } = req.params;
+    
+    let query;
+    let params = [];
+    
+    if (email) {
+      query = `
+        SELECT 
+          p.id, p.name, p.email, p.created_at as player_since,
+          pp.skill_level, pp.player_type, pp.engagement_level,
+          pp.total_games, pp.avg_correct, pp.avg_duration, pp.avg_guesses,
+          pp.challenge_games, pp.easy_games, pp.social_shares,
+          pp.best_score, pp.fastest_time, pp.insights, pp.recommendations,
+          pp.last_calculated, pp.created_at as profile_created
+        FROM players p
+        LEFT JOIN player_profiles pp ON p.id = pp.player_id
+        WHERE p.email = $1
+      `;
+      params = [email.toLowerCase().trim()];
+    } else {
+      query = `
+        SELECT 
+          p.id, p.name, p.email, p.created_at as player_since,
+          pp.skill_level, pp.player_type, pp.engagement_level,
+          pp.total_games, pp.avg_correct, pp.avg_duration, pp.avg_guesses,
+          pp.challenge_games, pp.easy_games, pp.social_shares,
+          pp.best_score, pp.fastest_time, pp.insights, pp.recommendations,
+          pp.last_calculated, pp.created_at as profile_created
+        FROM players p
+        LEFT JOIN player_profiles pp ON p.id = pp.player_id
+        WHERE pp.total_games > 0
+        ORDER BY pp.total_games DESC, pp.avg_correct DESC
+      `;
+    }
+
+    const result = await pool.query(query, params);
+    
+    // If profile doesn't exist yet, calculate it
+    if (email && result.rows.length > 0 && !result.rows[0].skill_level) {
+      await updatePlayerProfile(result.rows[0].id);
+      // Re-query to get updated profile
+      const updatedResult = await pool.query(query, params);
+      result.rows = updatedResult.rows;
+    }
+
+    const profiles = result.rows.map(row => ({
+      ...row,
+      insights: row.insights || [],
+      recommendations: row.recommendations || []
+    }));
+
+    res.json({ 
+      success: true, 
+      data: email ? profiles[0] : profiles 
+    });
+
+  } catch (error) {
+    console.error('❌ Player profiling error:', error);
+    res.status(500).json({ 
+      success: false, 
+      error: 'Failed to generate player profiles' 
+    });
+  }
+});
+
+// Function to update/calculate player profile
+async function updatePlayerProfile(playerId) {
+  try {
+    const client = await pool.connect();
+    
+    // Calculate profile data from game sessions
+    const result = await client.query(`
+      SELECT 
+        p.id,
+        p.name,
+        p.email,
+        COUNT(gs.id) as total_games,
+        COALESCE(AVG(gs.correct_count), 0) as avg_correct,
+        COALESCE(AVG(gs.duration_seconds), 0) as avg_duration,
+        COALESCE(AVG(jsonb_array_length(gs.guesses)), 0) as avg_guesses,
+        COUNT(CASE WHEN gs.mode = 'challenge' THEN 1 END) as challenge_games,
+        COUNT(CASE WHEN gs.mode = 'easy' THEN 1 END) as easy_games,
+        COUNT(CASE WHEN gs.shared_on_social THEN 1 END) as social_shares,
+        COALESCE(MAX(gs.correct_count), 0) as best_score,
+        COALESCE(MIN(gs.duration_seconds), 0) as fastest_time
+      FROM players p
+      LEFT JOIN game_sessions gs ON p.id = gs.player_id AND gs.mode != 'form-submission'
+      WHERE p.id = $1
+      GROUP BY p.id, p.name, p.email
+    `, [playerId]);
+
+    if (result.rows.length === 0) return;
+    
+    const player = result.rows[0];
+    
+    // Calculate categories
+    const skillLevel = calculateSkillLevel(player);
+    const playerType = calculatePlayerType(player);
+    const engagementLevel = calculateEngagementLevel(player);
+    const insights = generatePlayerInsights(player);
+    const recommendations = generateRecommendations({...player, skill_level: skillLevel, player_type: playerType, engagement_level: engagementLevel});
+
+    // Upsert profile data
+    await client.query(`
+      INSERT INTO player_profiles (
+        player_id, skill_level, player_type, engagement_level,
+        total_games, avg_correct, avg_duration, avg_guesses,
+        challenge_games, easy_games, social_shares, best_score, fastest_time,
+        insights, recommendations, last_calculated
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, NOW())
+      ON CONFLICT (player_id) 
+      DO UPDATE SET
+        skill_level = $2, player_type = $3, engagement_level = $4,
+        total_games = $5, avg_correct = $6, avg_duration = $7, avg_guesses = $8,
+        challenge_games = $9, easy_games = $10, social_shares = $11, 
+        best_score = $12, fastest_time = $13, insights = $14, recommendations = $15,
+        last_calculated = NOW()
+    `, [
+      playerId, skillLevel, playerType, engagementLevel,
+      player.total_games, player.avg_correct, player.avg_duration, player.avg_guesses,
+      player.challenge_games, player.easy_games, player.social_shares, 
+      player.best_score, player.fastest_time,
+      JSON.stringify(insights), JSON.stringify(recommendations)
+    ]);
+
+    client.release();
+    console.log(`📊 Updated profile for player ${playerId}: ${skillLevel}, ${playerType}, ${engagementLevel}`);
+    
+  } catch (error) {
+    console.error('❌ Error updating player profile:', error);
+  }
+}
+
+// Helper functions for categorization
+function calculateSkillLevel(player) {
+  if (player.avg_correct >= 1.5 && player.avg_duration <= 60) return 'Expert';
+  if (player.avg_correct >= 1.0 && player.avg_duration <= 120) return 'Advanced';
+  if (player.avg_correct >= 0.5) return 'Intermediate';
+  return 'Beginner';
+}
+
+function calculatePlayerType(player) {
+  if (player.challenge_games > player.easy_games) return 'Risk Taker';
+  if (player.avg_guesses <= 2) return 'Quick Guesser';
+  if (player.social_shares > 0) return 'Social Player';
+  if (player.avg_duration > 300) return 'Methodical Thinker';
+  return 'Casual Player';
+}
+
+function calculateEngagementLevel(player) {
+  if (player.total_games >= 10) return 'Highly Engaged';
+  if (player.total_games >= 5) return 'Engaged';
+  if (player.total_games >= 2) return 'Moderately Engaged';
+  return 'Low Engagement';
+}
+
 // Graceful shutdown
 process.on('SIGTERM', async () => {
   console.log('🔄 Received SIGTERM, shutting down gracefully');
@@ -294,9 +483,38 @@ process.on('SIGTERM', async () => {
   process.exit(0);
 });
 
+// Bulk profile update endpoint (admin use)
+app.post('/update-all-profiles', async (req, res) => {
+  try {
+    const playersResult = await pool.query('SELECT id FROM players');
+    const playerIds = playersResult.rows.map(row => row.id);
+    
+    let updated = 0;
+    for (const playerId of playerIds) {
+      await updatePlayerProfile(playerId);
+      updated++;
+    }
+
+    res.json({ 
+      success: true, 
+      message: `Updated ${updated} player profiles`,
+      updated 
+    });
+
+  } catch (error) {
+    console.error('❌ Bulk profile update error:', error);
+    res.status(500).json({ 
+      success: false, 
+      error: 'Failed to update profiles' 
+    });
+  }
+});
+
 app.listen(PORT, () => {
   console.log(`🎮 Journeyman Backend with PostgreSQL running on port ${PORT}`);
   console.log(`📊 Analytics: GET /analytics/journeyman`);
   console.log(`🏆 Leaderboard: GET /leaderboard/journeyman`);
+  console.log(`👤 Player Profiles: GET /player-profile or /player-profile/:email`);
+  console.log(`🔄 Update Profiles: POST /update-all-profiles`);
   console.log(`❤️  Health check: GET /health`);
 });
