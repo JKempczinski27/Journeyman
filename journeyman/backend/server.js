@@ -26,7 +26,7 @@ async function initializeDatabase() {
       )
     `);
 
-    // Create game_sessions table
+    // Create game_sessions table with all required columns
     await pool.query(`
       CREATE TABLE IF NOT EXISTS game_sessions (
         id SERIAL PRIMARY KEY,
@@ -78,8 +78,63 @@ async function initializeDatabase() {
     `);
 
     console.log('✅ Database tables initialized successfully');
+    
+    // Check and add missing columns (for existing databases)
+    await ensureColumnsExist();
   } catch (error) {
     console.error('❌ Error initializing database:', error);
+  }
+}
+
+// Ensure all required columns exist (handles database migrations)
+async function ensureColumnsExist() {
+  try {
+    console.log('🔄 Checking for missing columns...');
+    
+    // Check if mode column exists in game_sessions
+    const modeColumnExists = await pool.query(`
+      SELECT column_name 
+      FROM information_schema.columns 
+      WHERE table_name = 'game_sessions' AND column_name = 'mode'
+    `);
+    
+    if (modeColumnExists.rows.length === 0) {
+      console.log('🔧 Adding missing mode column to game_sessions...');
+      await pool.query(`
+        ALTER TABLE game_sessions 
+        ADD COLUMN mode VARCHAR(20) DEFAULT 'form-submission'
+      `);
+    }
+    
+    // Check other potentially missing columns
+    const columnsToCheck = [
+      { column: 'game_type', type: 'VARCHAR(50)', default: "'journeyman'" },
+      { column: 'duration_seconds', type: 'INTEGER', default: '0' },
+      { column: 'guesses', type: 'JSONB', default: "'[]'" },
+      { column: 'correct_count', type: 'INTEGER', default: '0' },
+      { column: 'shared_on_social', type: 'BOOLEAN', default: 'FALSE' },
+      { column: 'session_data', type: 'JSONB', default: "'{}'" }
+    ];
+    
+    for (const col of columnsToCheck) {
+      const columnExists = await pool.query(`
+        SELECT column_name 
+        FROM information_schema.columns 
+        WHERE table_name = 'game_sessions' AND column_name = $1
+      `, [col.column]);
+      
+      if (columnExists.rows.length === 0) {
+        console.log(`🔧 Adding missing ${col.column} column to game_sessions...`);
+        await pool.query(`
+          ALTER TABLE game_sessions 
+          ADD COLUMN ${col.column} ${col.type} DEFAULT ${col.default}
+        `);
+      }
+    }
+    
+    console.log('✅ Column check completed');
+  } catch (error) {
+    console.error('❌ Error checking/adding columns:', error);
   }
 }
 
@@ -595,6 +650,50 @@ app.post('/update-all-profiles', async (req, res) => {
     res.status(500).json({ 
       success: false, 
       error: 'Failed to update profiles' 
+    });
+  }
+});
+
+// Manual database fix endpoint (admin use)
+app.post('/fix-database', async (req, res) => {
+  try {
+    console.log('🔧 Manual database fix requested...');
+    
+    // Drop and recreate game_sessions table with correct schema
+    await pool.query('DROP TABLE IF EXISTS game_sessions CASCADE');
+    
+    await pool.query(`
+      CREATE TABLE game_sessions (
+        id SERIAL PRIMARY KEY,
+        player_id INTEGER REFERENCES players(id),
+        game_type VARCHAR(50) DEFAULT 'journeyman',
+        mode VARCHAR(20) DEFAULT 'form-submission',
+        duration_seconds INTEGER DEFAULT 0,
+        guesses JSONB DEFAULT '[]',
+        correct_count INTEGER DEFAULT 0,
+        shared_on_social BOOLEAN DEFAULT FALSE,
+        session_data JSONB DEFAULT '{}',
+        created_at TIMESTAMP DEFAULT NOW()
+      )
+    `);
+    
+    // Recreate indexes
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS idx_game_sessions_player_id ON game_sessions(player_id);
+      CREATE INDEX IF NOT EXISTS idx_game_sessions_created_at ON game_sessions(created_at);
+    `);
+    
+    console.log('✅ Database fix completed');
+    res.json({ 
+      success: true, 
+      message: 'Database schema fixed successfully' 
+    });
+  } catch (error) {
+    console.error('❌ Database fix error:', error);
+    res.status(500).json({ 
+      success: false, 
+      error: 'Failed to fix database',
+      details: error.message 
     });
   }
 });
