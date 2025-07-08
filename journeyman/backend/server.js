@@ -46,7 +46,7 @@ async function initializeDatabase() {
     await pool.query(`
       CREATE TABLE IF NOT EXISTS player_profiles (
         id SERIAL PRIMARY KEY,
-        player_id INTEGER REFERENCES players(id) UNIQUE,
+        player_id INTEGER REFERENCES players(id),
         skill_level VARCHAR(50) DEFAULT 'Beginner',
         player_type VARCHAR(50) DEFAULT 'Casual Player',
         engagement_level VARCHAR(50) DEFAULT 'Low Engagement',
@@ -62,7 +62,8 @@ async function initializeDatabase() {
         insights JSONB DEFAULT '[]',
         recommendations JSONB DEFAULT '[]',
         last_calculated TIMESTAMP DEFAULT NOW(),
-        created_at TIMESTAMP DEFAULT NOW()
+        created_at TIMESTAMP DEFAULT NOW(),
+        UNIQUE(player_id)
       )
     `);
 
@@ -101,6 +102,16 @@ app.post('/save-player', async (req, res) => {
       sharedOnSocial,
       gameSpecificData = {}
     } = req.body;
+
+    console.log('🎯 Received save-player request:', {
+      name,
+      email,
+      mode,
+      durationInSeconds,
+      guessesCount: guesses ? guesses.length : 0,
+      correctCount,
+      sharedOnSocial
+    });
 
     // Validate required fields
     if (!name || !email) {
@@ -168,6 +179,7 @@ app.post('/save-player', async (req, res) => {
     await client.query('COMMIT');
 
     // Update player profile after game session
+    console.log(`🔄 Starting profile update for player ${playerId}...`);
     await updatePlayerProfile(playerId);
 
     const logEntry = {
@@ -388,6 +400,7 @@ app.get('/player-profile/:email?', async (req, res) => {
 // Function to update/calculate player profile
 async function updatePlayerProfile(playerId) {
   try {
+    console.log(`📊 Calculating profile for player ${playerId}...`);
     const client = await pool.connect();
     
     // Calculate profile data from game sessions
@@ -411,9 +424,21 @@ async function updatePlayerProfile(playerId) {
       GROUP BY p.id, p.name, p.email
     `, [playerId]);
 
-    if (result.rows.length === 0) return;
+    if (result.rows.length === 0) {
+      console.log(`⚠️ No data found for player ${playerId}`);
+      client.release();
+      return;
+    }
     
     const player = result.rows[0];
+    console.log(`📈 Player stats:`, {
+      id: player.id,
+      name: player.name,
+      totalGames: player.total_games,
+      avgCorrect: player.avg_correct,
+      challengeGames: player.challenge_games,
+      easyGames: player.easy_games
+    });
     
     // Calculate categories
     const skillLevel = calculateSkillLevel(player);
@@ -474,6 +499,70 @@ function calculateEngagementLevel(player) {
   if (player.total_games >= 5) return 'Engaged';
   if (player.total_games >= 2) return 'Moderately Engaged';
   return 'Low Engagement';
+}
+
+// Generate player insights based on performance
+function generatePlayerInsights(player) {
+  const insights = [];
+  
+  if (player.total_games === 0) {
+    insights.push("Welcome! Play some games to unlock insights about your playing style.");
+    return insights;
+  }
+  
+  if (player.avg_correct >= 1.5) {
+    insights.push("You're excellent at guessing players quickly!");
+  }
+  
+  if (player.challenge_games > player.easy_games) {
+    insights.push("You prefer challenging yourself over taking the easy route.");
+  }
+  
+  if (player.social_shares > 0) {
+    insights.push("You like sharing your achievements with others!");
+  }
+  
+  if (player.avg_duration > 300) {
+    insights.push("You take your time to think through your guesses carefully.");
+  }
+  
+  if (player.total_games >= 5) {
+    insights.push("You're becoming a regular player!");
+  }
+  
+  return insights;
+}
+
+// Generate personalized recommendations
+function generateRecommendations(player) {
+  const recommendations = [];
+  
+  if (player.total_games === 0) {
+    recommendations.push("Try playing your first game to get started!");
+    return recommendations;
+  }
+  
+  if (player.challenge_games === 0 && player.easy_games > 0) {
+    recommendations.push("Ready for a challenge? Try Challenge Mode next!");
+  }
+  
+  if (player.avg_correct < 0.5) {
+    recommendations.push("Take your time and study the team logos carefully.");
+  }
+  
+  if (player.social_shares === 0) {
+    recommendations.push("Share your best games with friends!");
+  }
+  
+  if (player.skill_level === 'Expert') {
+    recommendations.push("You've mastered this game! Challenge your friends to beat your scores.");
+  }
+  
+  if (player.total_games >= 10) {
+    recommendations.push("You're a dedicated player! Check out your detailed stats.");
+  }
+  
+  return recommendations;
 }
 
 // Graceful shutdown

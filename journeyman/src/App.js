@@ -61,6 +61,8 @@ export default function App() {
     const [guesses, setGuesses] = useState([]);
     const [correctCount, setCorrectCount] = useState(0);
     const [sharedOnSocial, setSharedOnSocial] = useState(false);
+    const [gameEnded, setGameEnded] = useState(false);
+    const [gameEndMessage, setGameEndMessage] = useState('');
 
     const currentPlayer = playersData[currentIndex];
 
@@ -98,30 +100,64 @@ export default function App() {
     };
 
     const sendGameData = async (durationOverride) => {
+        console.log('🎯 sendGameData called with:', {
+            mode: challengeMode ? 'challenge' : 'easy',
+            durationOverride,
+            guesses,
+            correctCount
+        });
+        
         try {
-            await fetch('https://journeyman-production.up.railway.app/save-player', {
+            const gameData = {
+                name: playerName,
+                email: playerEmail,
+                mode: challengeMode ? 'challenge' : 'easy',
+                durationInSeconds: durationOverride ?? durationInSeconds,
+                guesses,
+                correctCount,
+                sharedOnSocial,
+                gameSpecificData: {
+                    currentPlayerIndex: currentIndex,
+                    currentPlayerName: currentPlayer.name,
+                    totalPlayers: playersData.length,
+                    challengeMode,
+                    guessDetails: guesses.map((guess, index) => ({
+                        guess,
+                        correct: guess.toLowerCase() === currentPlayer.name.toLowerCase(),
+                        timestamp: new Date().toISOString()
+                    }))
+                }
+            };
+
+            console.log('🚀 Sending game data:', gameData);
+
+            const response = await fetch('https://journeyman-production.up.railway.app/save-player', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    name: playerName,
-                    email: playerEmail,
-                    mode: challengeMode ? 'challenge' : 'easy',
-                    durationInSeconds: durationOverride ?? durationInSeconds,
-                    guesses,
-                    correctCount,
-                    sharedOnSocial
-                }),
+                body: JSON.stringify(gameData),
             });
+
+            const result = await response.json();
+            console.log('✅ Game data response:', result);
+            
+            if (result.success) {
+                setGameEndMessage('🎮 Game data saved successfully! Thanks for playing!');
+            } else {
+                setGameEndMessage('⚠️ Game saved, but there was an issue with the data.');
+            }
         } catch (err) {
-            console.error('Failed to send game data:', err);
+            console.error('❌ Failed to send game data:', err);
+            setGameEndMessage('❌ Failed to save game data, but thanks for playing!');
         }
     };
 
-    const endGame = () => {
+    const endGame = async () => {
         const endTime = Date.now();
         const duration = Math.floor((endTime - startTime) / 1000);
         setDurationInSeconds(duration);
-        sendGameData(duration);
+        setGameEnded(true);
+        setFeedback('🎯 Finishing game...');
+        await sendGameData(duration);
     };
 
     const handleFormSubmit = async (e) => {
@@ -139,31 +175,15 @@ export default function App() {
 
         setFormError('');
 
-        // Send name/email to backend JSON writer
+        // Send name/email to backend - just validate, don't create player yet
         try {
-            const response = await fetch('https://journeyman-production.up.railway.app/save-player', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    name: playerName,
-                    email: playerEmail,
-                }),
-            });
-
-            const result = await response.json();
-
-            if (!result.success) {
-                setFormError('Server error. Please try again later.');
-                return;
-            }
+            // Just proceed to landing page - player will be created when game data is sent
+            setPage('landing');
         } catch (error) {
-            console.error('Error saving player info:', error);
+            console.error('Error:', error);
             setFormError('Connection error. Please try again later.');
             return;
         }
-
-        // Proceed to the landing page if successful
-        setPage('landing');
     };
 
     // Player info form page
@@ -432,7 +452,34 @@ export default function App() {
             </Box>
             <Box mt={2}>
                 <Typography sx={{ fontFamily: 'Endzone' }}>{feedback}</Typography>
-                {feedback === '✅ Correct!' && (
+                {gameEndMessage && (
+                    <Typography sx={{ fontFamily: 'Endzone', color: '#90EE90', mt: 2 }}>
+                        {gameEndMessage}
+                    </Typography>
+                )}
+                {gameEnded && (
+                    <Box mt={3}>
+                        <Typography sx={{ fontFamily: 'Endzone', color: '#FFD700' }}>
+                            🏆 Game Complete! 🏆
+                        </Typography>
+                        <Typography sx={{ fontFamily: 'Endzone', fontSize: '0.9rem', mt: 1 }}>
+                            Score: {correctCount} correct | Time: {Math.floor(durationInSeconds / 60)}:{(durationInSeconds % 60).toString().padStart(2, '0')}
+                        </Typography>
+                        <Button 
+                            onClick={() => window.location.reload()} 
+                            variant="contained"
+                            sx={{ 
+                                fontFamily: 'Endzone',
+                                mt: 2,
+                                backgroundColor: '#4CAF50',
+                                '&:hover': { backgroundColor: '#45a049' }
+                            }}
+                        >
+                            Play Again
+                        </Button>
+                    </Box>
+                )}
+                {feedback === '✅ Correct!' && !gameEnded && (
                     <Box mt={4} display="flex" gap={2} justifyContent="center">
                         <Button 
                             onClick={nextPlayer} 
@@ -471,7 +518,7 @@ export default function App() {
                     <img src="https://cdn.jsdelivr.net/npm/simple-icons@v11/icons/facebook.svg" alt="Facebook" width={32} height={32} style={{ filter: 'invert(1)' }} />
                 </a>
                 <a
-                    href="https://twitter.com/intent/tweet?url=https://yourgameurl.com&text=Try%20the%20Journeyman%20game!"
+                    href="https://twitter.com/intent/tweet?url=https://yourgameurl.com&text=I%20just%20crushed%20the%20Journeyman%20game!%20Can%20you%20guess%20which%20NFL%20players%20were%20traded%20more%20than%20your%20ex%20changed%20their%20relationship%20status?%20🏈"
                     target="_blank"
                     rel="noopener noreferrer"
                     aria-label="Share on Twitter"
@@ -480,7 +527,7 @@ export default function App() {
                     <img src="https://cdn.jsdelivr.net/npm/simple-icons@v11/icons/x.svg" alt="Twitter/X" width={32} height={32} style={{ filter: 'invert(1)' }} />
                 </a>
                 <a
-                    href="https://www.reddit.com/submit?url=https://yourgameurl.com&title=Try%20the%20Journeyman%20game!"
+                    href="https://www.reddit.com/submit?url=https://yourgameurl.com&title=This%20NFL%20Journeyman%20guessing%20game%20is%20harder%20than%20it%20looks"
                     target="_blank"
                     rel="noopener noreferrer"
                     aria-label="Share on Reddit"
@@ -489,7 +536,7 @@ export default function App() {
                     <img src="https://cdn.jsdelivr.net/npm/simple-icons@v11/icons/reddit.svg" alt="Reddit" width={32} height={32} style={{ filter: 'invert(1)' }} />
                 </a>
                 <a
-                    href="https://wa.me/?text=Try%20the%20Journeyman%20game!%20https://yourgameurl.com"
+                    href="https://wa.me/?text=¡Prueba%20el%20juego%20Journeyman!%20¿Crees%20que%20conoces%20la%20historia%20de%20la%20NFL?%20Intenta%20este%20juego%20y%20mira%20si%20puedes%20adivinar%20qué%20jugadores%20cambiaron%20de%20equipo%20como%20si%20fuera%20una%20silla%20musical!%20🏈%20https://yourgameurl.com"
                     target="_blank"
                     rel="noopener noreferrer"
                     aria-label="Share on WhatsApp"
