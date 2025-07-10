@@ -620,6 +620,70 @@ function generateRecommendations(player) {
   return recommendations;
 }
 
+// Generate player insights based on performance
+function generatePlayerInsights(player) {
+  const insights = [];
+  
+  if (player.total_games === 0) {
+    insights.push("Welcome! Play some games to unlock insights about your playing style.");
+    return insights;
+  }
+  
+  if (player.avg_correct >= 1.5) {
+    insights.push("You're excellent at guessing players quickly!");
+  }
+  
+  if (player.challenge_games > player.easy_games) {
+    insights.push("You prefer challenging yourself over taking the easy route.");
+  }
+  
+  if (player.social_shares > 0) {
+    insights.push("You like sharing your achievements with others!");
+  }
+  
+  if (player.avg_duration > 300) {
+    insights.push("You take your time to think through your guesses carefully.");
+  }
+  
+  if (player.total_games >= 5) {
+    insights.push("You're becoming a regular player!");
+  }
+  
+  return insights;
+}
+
+// Generate personalized recommendations
+function generateRecommendations(player) {
+  const recommendations = [];
+  
+  if (player.total_games === 0) {
+    recommendations.push("Try playing your first game to get started!");
+    return recommendations;
+  }
+  
+  if (player.challenge_games === 0 && player.easy_games > 0) {
+    recommendations.push("Ready for a challenge? Try Challenge Mode next!");
+  }
+  
+  if (player.avg_correct < 0.5) {
+    recommendations.push("Take your time and study the team logos carefully.");
+  }
+  
+  if (player.social_shares === 0) {
+    recommendations.push("Share your best games with friends!");
+  }
+  
+  if (player.skill_level === 'Expert') {
+    recommendations.push("You've mastered this game! Challenge your friends to beat your scores.");
+  }
+  
+  if (player.total_games >= 10) {
+    recommendations.push("You're a dedicated player! Check out your detailed stats.");
+  }
+  
+  return recommendations;
+}
+
 // Graceful shutdown
 process.on('SIGTERM', async () => {
   console.log('🔄 Received SIGTERM, shutting down gracefully');
@@ -698,9 +762,219 @@ app.post('/fix-database', async (req, res) => {
   }
 });
 
+// Trend analysis endpoints
+app.get('/trends/:gameType?', async (req, res) => {
+  try {
+    const { gameType = 'journeyman' } = req.params;
+    const { period = 'week', metric = 'performance' } = req.query;
+    
+    let dateFormat = 'week';
+    switch(period) {
+      case 'day': dateFormat = 'day'; break;
+      case 'week': dateFormat = 'week'; break;
+      case 'month': dateFormat = 'month'; break;
+      default: dateFormat = 'week';
+    }
+    
+    // Performance trends over time
+    const performanceTrends = await pool.query(`
+      SELECT 
+        DATE_TRUNC($1, gs.created_at) as period,
+        COUNT(*) as total_sessions,
+        COUNT(DISTINCT gs.player_id) as active_players,
+        ROUND(AVG(gs.correct_count), 2) as avg_score,
+        ROUND(AVG(gs.duration_seconds), 2) as avg_duration,
+        COUNT(CASE WHEN gs.mode = 'challenge' THEN 1 END) as challenge_sessions,
+        COUNT(CASE WHEN gs.mode = 'easy' THEN 1 END) as easy_sessions
+      FROM game_sessions gs
+      WHERE gs.game_type = $2 AND gs.mode != 'form-submission'
+      GROUP BY period 
+      ORDER BY period DESC
+      LIMIT 12
+    `, [dateFormat, gameType]);
+
+    // Player acquisition trends
+    const acquisitionTrends = await pool.query(`
+      SELECT 
+        DATE_TRUNC($1, p.created_at) as period,
+        COUNT(*) as new_players
+      FROM players p
+      GROUP BY period 
+      ORDER BY period DESC
+      LIMIT 12
+    `, [dateFormat]);
+
+    // Mode preference trends
+    const modePreferences = await pool.query(`
+      SELECT 
+        DATE_TRUNC($1, gs.created_at) as period,
+        gs.mode,
+        COUNT(*) as sessions,
+        ROUND(AVG(gs.correct_count), 2) as avg_performance
+      FROM game_sessions gs
+      WHERE gs.game_type = $2 AND gs.mode != 'form-submission'
+      GROUP BY period, gs.mode 
+      ORDER BY period DESC, gs.mode
+      LIMIT 24
+    `, [dateFormat, gameType]);
+
+    res.json({ 
+      success: true, 
+      data: {
+        performanceTrends: performanceTrends.rows,
+        acquisitionTrends: acquisitionTrends.rows,
+        modePreferences: modePreferences.rows,
+        period: dateFormat
+      }
+    });
+
+  } catch (error) {
+    console.error('❌ Trends analysis error:', error);
+    res.status(500).json({ 
+      success: false, 
+      error: 'Failed to generate trend analysis' 
+    });
+  }
+});
+
+// Player progression tracking
+app.get('/player-progression/:email', async (req, res) => {
+  try {
+    const { email } = req.params;
+    
+    const progressionData = await pool.query(`
+      SELECT 
+        gs.created_at,
+        gs.mode,
+        gs.correct_count,
+        gs.duration_seconds,
+        ROW_NUMBER() OVER (ORDER BY gs.created_at) as game_number,
+        AVG(gs.correct_count) OVER (
+          ORDER BY gs.created_at 
+          ROWS BETWEEN 4 PRECEDING AND CURRENT ROW
+        ) as rolling_avg_score,
+        AVG(gs.duration_seconds) OVER (
+          ORDER BY gs.created_at 
+          ROWS BETWEEN 4 PRECEDING AND CURRENT ROW
+        ) as rolling_avg_duration
+      FROM players p
+      JOIN game_sessions gs ON p.id = gs.player_id
+      WHERE p.email = $1 AND gs.mode != 'form-submission'
+      ORDER BY gs.created_at
+    `, [email.toLowerCase().trim()]);
+
+    res.json({ 
+      success: true, 
+      data: progressionData.rows 
+    });
+
+  } catch (error) {
+    console.error('❌ Player progression error:', error);
+    res.status(500).json({ 
+      success: false, 
+      error: 'Failed to get player progression data' 
+    });
+  }
+});
+
+// Advanced analytics with correlations
+app.get('/advanced-analytics/:gameType?', async (req, res) => {
+  try {
+    const { gameType = 'journeyman' } = req.params;
+    
+    // Correlation between game duration and performance
+    const durationPerformanceCorrelation = await pool.query(`
+      SELECT 
+        CASE 
+          WHEN duration_seconds < 30 THEN 'Very Fast (0-30s)'
+          WHEN duration_seconds < 60 THEN 'Fast (30-60s)'
+          WHEN duration_seconds < 120 THEN 'Medium (1-2min)'
+          WHEN duration_seconds < 300 THEN 'Slow (2-5min)'
+          ELSE 'Very Slow (5min+)'
+        END as duration_category,
+        COUNT(*) as sessions,
+        ROUND(AVG(correct_count), 2) as avg_score,
+        ROUND(AVG(duration_seconds), 2) as avg_duration
+      FROM game_sessions
+      WHERE game_type = $1 AND mode != 'form-submission'
+      GROUP BY duration_category
+      ORDER BY avg_duration
+    `, [gameType]);
+
+    // Mode difficulty analysis
+    const modeAnalysis = await pool.query(`
+      SELECT 
+        mode,
+        COUNT(*) as total_sessions,
+        ROUND(AVG(correct_count), 2) as avg_score,
+        ROUND(AVG(duration_seconds), 2) as avg_duration,
+        COUNT(CASE WHEN shared_on_social THEN 1 END) as social_shares,
+        ROUND(COUNT(CASE WHEN shared_on_social THEN 1 END) * 100.0 / COUNT(*), 2) as share_rate_percent
+      FROM game_sessions
+      WHERE game_type = $1 AND mode != 'form-submission'
+      GROUP BY mode
+      ORDER BY avg_score DESC
+    `, [gameType]);
+
+    // Player retention analysis
+    const retentionAnalysis = await pool.query(`
+      WITH first_play AS (
+        SELECT 
+          player_id,
+          MIN(created_at) as first_session
+        FROM game_sessions 
+        WHERE game_type = $1 AND mode != 'form-submission'
+        GROUP BY player_id
+      ),
+      retention_buckets AS (
+        SELECT 
+          fp.player_id,
+          fp.first_session,
+          CASE 
+            WHEN MAX(gs.created_at) - fp.first_session > INTERVAL '7 days' THEN 'Week+ Retention'
+            WHEN MAX(gs.created_at) - fp.first_session > INTERVAL '1 day' THEN 'Day+ Retention'
+            WHEN COUNT(gs.id) > 1 THEN 'Multi-session'
+            ELSE 'Single Session'
+          END as retention_category,
+          COUNT(gs.id) as total_sessions
+        FROM first_play fp
+        JOIN game_sessions gs ON fp.player_id = gs.player_id
+        WHERE gs.mode != 'form-submission'
+        GROUP BY fp.player_id, fp.first_session
+      )
+      SELECT 
+        retention_category,
+        COUNT(*) as players,
+        ROUND(AVG(total_sessions), 2) as avg_sessions_per_player
+      FROM retention_buckets
+      GROUP BY retention_category
+      ORDER BY avg_sessions_per_player DESC
+    `, [gameType]);
+
+    res.json({ 
+      success: true, 
+      data: {
+        durationPerformanceCorrelation: durationPerformanceCorrelation.rows,
+        modeAnalysis: modeAnalysis.rows,
+        retentionAnalysis: retentionAnalysis.rows
+      }
+    });
+
+  } catch (error) {
+    console.error('❌ Advanced analytics error:', error);
+    res.status(500).json({ 
+      success: false, 
+      error: 'Failed to generate advanced analytics' 
+    });
+  }
+});
+
 app.listen(PORT, () => {
   console.log(`🎮 Journeyman Backend with PostgreSQL running on port ${PORT}`);
   console.log(`📊 Analytics: GET /analytics/journeyman`);
+  console.log(`📈 Trends: GET /trends/journeyman?period=week&metric=performance`);
+  console.log(`📉 Player Progress: GET /player-progression/:email`);
+  console.log(`🔬 Advanced Analytics: GET /advanced-analytics/journeyman`);
   console.log(`🏆 Leaderboard: GET /leaderboard/journeyman`);
   console.log(`👤 Player Profiles: GET /player-profile or /player-profile/:email`);
   console.log(`🔄 Update Profiles: POST /update-all-profiles`);
