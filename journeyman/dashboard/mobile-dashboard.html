@@ -1,0 +1,448 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Journeyman Mobile Dashboard</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #f0f2f5;
+            color: #333;
+            line-height: 1.6;
+        }
+        
+        .container {
+            max-width: 480px;
+            margin: 0 auto;
+            padding: 10px;
+        }
+        
+        .header {
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            color: white;
+            padding: 20px;
+            border-radius: 12px;
+            margin-bottom: 20px;
+            text-align: center;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+        }
+        
+        .header h1 {
+            font-size: 1.8em;
+            margin-bottom: 5px;
+        }
+        
+        .header p {
+            opacity: 0.9;
+            font-size: 0.9em;
+        }
+        
+        .controls {
+            background: white;
+            padding: 15px;
+            border-radius: 12px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+        }
+        
+        .control-row {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 10px;
+            align-items: center;
+        }
+        
+        .control-row:last-child {
+            margin-bottom: 0;
+        }
+        
+        label {
+            font-weight: 600;
+            font-size: 0.9em;
+            min-width: 80px;
+        }
+        
+        select, button {
+            flex: 1;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            font-size: 14px;
+        }
+        
+        button {
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            color: white;
+            border: none;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.2s;
+        }
+        
+        button:active {
+            transform: scale(0.98);
+        }
+        
+        .refresh-btn {
+            width: 100%;
+            margin-top: 10px;
+            padding: 12px;
+        }
+        
+        .metrics {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+        
+        .metric {
+            background: white;
+            padding: 15px;
+            border-radius: 12px;
+            text-align: center;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+        }
+        
+        .metric-icon {
+            font-size: 1.5em;
+            margin-bottom: 5px;
+        }
+        
+        .metric-value {
+            font-size: 1.5em;
+            font-weight: bold;
+            color: #667eea;
+            margin-bottom: 3px;
+        }
+        
+        .metric-label {
+            font-size: 0.8em;
+            color: #666;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        
+        .section {
+            background: white;
+            border-radius: 12px;
+            margin-bottom: 20px;
+            overflow: hidden;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+        }
+        
+        .section-header {
+            background: #f8f9fa;
+            padding: 15px;
+            font-weight: 600;
+            border-bottom: 1px solid #eee;
+        }
+        
+        .section-content {
+            padding: 15px;
+        }
+        
+        .leaderboard-item {
+            display: flex;
+            align-items: center;
+            padding: 10px 0;
+            border-bottom: 1px solid #f0f0f0;
+        }
+        
+        .leaderboard-item:last-child {
+            border-bottom: none;
+        }
+        
+        .rank {
+            width: 30px;
+            font-weight: bold;
+            color: #667eea;
+        }
+        
+        .player-info {
+            flex: 1;
+            margin-left: 10px;
+        }
+        
+        .player-name {
+            font-weight: 600;
+            font-size: 0.9em;
+        }
+        
+        .player-stats {
+            font-size: 0.8em;
+            color: #666;
+        }
+        
+        .score {
+            font-weight: bold;
+            color: #333;
+        }
+        
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: #666;
+        }
+        
+        .error {
+            background: #ffebee;
+            color: #c62828;
+            padding: 15px;
+            border-radius: 8px;
+            margin: 20px 0;
+            text-align: center;
+        }
+        
+        .status-indicator {
+            display: inline-block;
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            margin-right: 8px;
+        }
+        
+        .status-online {
+            background: #4caf50;
+        }
+        
+        .status-offline {
+            background: #f44336;
+        }
+        
+        @keyframes pulse {
+            0% { opacity: 1; }
+            50% { opacity: 0.5; }
+            100% { opacity: 1; }
+        }
+        
+        .loading-pulse {
+            animation: pulse 1.5s infinite;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🎮 Journeyman</h1>
+            <p>Mobile Analytics Dashboard</p>
+            <div style="font-size: 0.8em; margin-top: 10px;">
+                <span class="status-indicator" id="statusIndicator"></span>
+                <span id="statusText">Connecting...</span>
+            </div>
+        </div>
+
+        <div class="controls">
+            <div class="control-row">
+                <label>Game:</label>
+                <select id="gameType">
+                    <option value="journeyman">Journeyman</option>
+                    <option value="">All Games</option>
+                </select>
+            </div>
+            <div class="control-row">
+                <label>Period:</label>
+                <select id="period">
+                    <option value="day">Today</option>
+                    <option value="week" selected>Week</option>
+                    <option value="month">Month</option>
+                </select>
+            </div>
+            <button class="refresh-btn" onclick="refreshData()">🔄 Refresh Dashboard</button>
+        </div>
+
+        <div id="loading" class="loading loading-pulse">
+            📊 Loading analytics...
+        </div>
+
+        <div id="error" class="error" style="display: none;"></div>
+
+        <div id="content" style="display: none;">
+            <div class="metrics" id="metrics">
+                <!-- Metrics will be populated here -->
+            </div>
+
+            <div class="section">
+                <div class="section-header">🏆 Top Players</div>
+                <div class="section-content" id="leaderboard">
+                    <!-- Leaderboard will be populated here -->
+                </div>
+            </div>
+
+            <div class="section">
+                <div class="section-header">📈 Quick Stats</div>
+                <div class="section-content" id="quickStats">
+                    <!-- Quick stats will be populated here -->
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE = 'http://localhost:3001';
+        let isOnline = false;
+        
+        // Initialize
+        document.addEventListener('DOMContentLoaded', function() {
+            setupEventListeners();
+            refreshData();
+            
+            // Auto-refresh every 30 seconds
+            setInterval(refreshData, 30000);
+        });
+        
+        function setupEventListeners() {
+            document.getElementById('gameType').addEventListener('change', refreshData);
+            document.getElementById('period').addEventListener('change', refreshData);
+        }
+        
+        async function refreshData() {
+            const loading = document.getElementById('loading');
+            const content = document.getElementById('content');
+            const error = document.getElementById('error');
+            
+            loading.style.display = 'block';
+            content.style.display = 'none';
+            error.style.display = 'none';
+            
+            try {
+                const gameType = document.getElementById('gameType').value;
+                const gameParam = gameType ? `/${gameType}` : '';
+                
+                // Fetch data
+                const [analytics, leaderboard] = await Promise.all([
+                    fetchData(`/analytics${gameParam}`),
+                    fetchData(`/leaderboard${gameParam}`)
+                ]);
+                
+                updateStatus(true);
+                updateMetrics(analytics);
+                updateLeaderboard(leaderboard);
+                updateQuickStats(analytics);
+                
+                loading.style.display = 'none';
+                content.style.display = 'block';
+                
+            } catch (err) {
+                console.error('Error:', err);
+                updateStatus(false);
+                showError('Failed to load data. Check connection and try again.');
+                loading.style.display = 'none';
+            }
+        }
+        
+        async function fetchData(endpoint) {
+            const response = await fetch(`${API_BASE}${endpoint}`);
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}`);
+            }
+            return response.json();
+        }
+        
+        function updateStatus(online) {
+            isOnline = online;
+            const indicator = document.getElementById('statusIndicator');
+            const text = document.getElementById('statusText');
+            
+            if (online) {
+                indicator.className = 'status-indicator status-online';
+                text.textContent = 'Connected';
+            } else {
+                indicator.className = 'status-indicator status-offline';
+                text.textContent = 'Offline';
+            }
+        }
+        
+        function updateMetrics(analytics) {
+            const metrics = [
+                {
+                    icon: '👥',
+                    value: analytics.totalPlayers || 0,
+                    label: 'Players'
+                },
+                {
+                    icon: '🎮',
+                    value: analytics.totalSessions || 0,
+                    label: 'Sessions'
+                },
+                {
+                    icon: '🎯',
+                    value: Math.round(analytics.averageScore || 0),
+                    label: 'Avg Score'
+                },
+                {
+                    icon: '✅',
+                    value: `${Math.round((analytics.completionRate || 0) * 100)}%`,
+                    label: 'Completed'
+                }
+            ];
+            
+            const container = document.getElementById('metrics');
+            container.innerHTML = metrics.map(metric => `
+                <div class="metric">
+                    <div class="metric-icon">${metric.icon}</div>
+                    <div class="metric-value">${metric.value}</div>
+                    <div class="metric-label">${metric.label}</div>
+                </div>
+            `).join('');
+        }
+        
+        function updateLeaderboard(leaderboard) {
+            const container = document.getElementById('leaderboard');
+            
+            if (!leaderboard || leaderboard.length === 0) {
+                container.innerHTML = '<div style="text-align: center; color: #666;">No players yet</div>';
+                return;
+            }
+            
+            container.innerHTML = leaderboard.slice(0, 5).map((player, index) => `
+                <div class="leaderboard-item">
+                    <div class="rank">#${index + 1}</div>
+                    <div class="player-info">
+                        <div class="player-name">${player.playerName || 'Anonymous'}</div>
+                        <div class="player-stats">
+                            ${player.gamesPlayed || 0} games • ${player.skillLevel || 'Unknown'}
+                        </div>
+                    </div>
+                    <div class="score">${player.bestScore || 0}</div>
+                </div>
+            `).join('');
+        }
+        
+        function updateQuickStats(analytics) {
+            const stats = [
+                `🔥 Active today: ${analytics.activeToday || 0}`,
+                `⏱️ Avg duration: ${formatDuration(analytics.averageDuration || 0)}`,
+                `📊 Games this week: ${analytics.weeklyGames || 0}`,
+                `🚀 New players: ${analytics.newPlayers || 0}`
+            ];
+            
+            const container = document.getElementById('quickStats');
+            container.innerHTML = stats.map(stat => `
+                <div style="padding: 8px 0; border-bottom: 1px solid #f0f0f0; font-size: 0.9em;">
+                    ${stat}
+                </div>
+            `).join('').replace(/border-bottom: 1px solid #f0f0f0;(?=[^>]*>$)/, ''); // Remove border from last item
+        }
+        
+        function formatDuration(seconds) {
+            const mins = Math.floor(seconds / 60);
+            const secs = seconds % 60;
+            return `${mins}:${secs.toString().padStart(2, '0')}`;
+        }
+        
+        function showError(message) {
+            const error = document.getElementById('error');
+            error.textContent = message;
+            error.style.display = 'block';
+        }
+    </script>
+</body>
+</html>

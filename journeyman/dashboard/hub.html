@@ -1,0 +1,397 @@
+ Advanced Analytics: GET /advanced-analytics/journeyman
+🏆 Leaderboard: GET /leaderboard/journeyman
+👤 Player Profiles: GET /player-profile or /player-profile/:email
+🔄 Update Profiles: POST /update-all-profiles
+❤️  Health check: GET /health
+❌ Error initializing database: Error: getaddrinfo ENOTFOUND postgres.railway.internal
+    at /workspaces/Journeyman/journeyman/backend/node_modules/pg-pool/index.js:45:11
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+    at async initializeDatabase (/workspaces/Journeyman/journeyman/backend/server.js:20:5) {
+  errno: -3008,
+  code: 'ENOTFOUND',
+  syscall: 'getaddrinfo',
+  hostname: 'postgres.railway.internal'
+}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Journeyman Dashboard Hub</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+        }
+        
+        .container {
+            max-width: 800px;
+            padding: 40px;
+            text-align: center;
+        }
+        
+        .header {
+            margin-bottom: 50px;
+        }
+        
+        .header h1 {
+            font-size: 3em;
+            margin-bottom: 15px;
+            text-shadow: 0 4px 8px rgba(0,0,0,0.3);
+        }
+        
+        .header p {
+            font-size: 1.2em;
+            opacity: 0.9;
+            max-width: 500px;
+            margin: 0 auto;
+        }
+        
+        .dashboard-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 30px;
+            margin-bottom: 40px;
+        }
+        
+        .dashboard-card {
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(20px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 20px;
+            padding: 30px;
+            transition: all 0.3s ease;
+            cursor: pointer;
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .dashboard-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.1), transparent);
+            transition: left 0.5s;
+        }
+        
+        .dashboard-card:hover::before {
+            left: 100%;
+        }
+        
+        .dashboard-card:hover {
+            transform: translateY(-10px);
+            box-shadow: 0 20px 40px rgba(0,0,0,0.3);
+        }
+        
+        .dashboard-icon {
+            font-size: 3em;
+            margin-bottom: 20px;
+            filter: drop-shadow(0 4px 8px rgba(0,0,0,0.3));
+        }
+        
+        .dashboard-title {
+            font-size: 1.5em;
+            font-weight: 600;
+            margin-bottom: 15px;
+        }
+        
+        .dashboard-description {
+            opacity: 0.8;
+            font-size: 0.9em;
+            line-height: 1.5;
+            margin-bottom: 20px;
+        }
+        
+        .dashboard-features {
+            list-style: none;
+            font-size: 0.8em;
+            opacity: 0.7;
+        }
+        
+        .dashboard-features li {
+            margin: 5px 0;
+        }
+        
+        .dashboard-features li::before {
+            content: '✓ ';
+            color: #00ff88;
+            font-weight: bold;
+        }
+        
+        .status-section {
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(20px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 15px;
+            padding: 20px;
+            margin-bottom: 30px;
+        }
+        
+        .status-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin: 10px 0;
+            font-size: 0.9em;
+        }
+        
+        .status-indicator {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            margin-left: 10px;
+        }
+        
+        .status-online {
+            background: #00ff88;
+            animation: pulse 2s infinite;
+        }
+        
+        .status-offline {
+            background: #ff4757;
+        }
+        
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+        
+        .action-buttons {
+            display: flex;
+            gap: 15px;
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+        
+        .action-btn {
+            padding: 12px 24px;
+            background: rgba(255, 255, 255, 0.2);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            color: white;
+            text-decoration: none;
+            border-radius: 12px;
+            font-weight: 600;
+            transition: all 0.3s ease;
+        }
+        
+        .action-btn:hover {
+            background: rgba(255, 255, 255, 0.3);
+            transform: translateY(-2px);
+        }
+        
+        @media (max-width: 768px) {
+            .container {
+                padding: 20px;
+            }
+            
+            .header h1 {
+                font-size: 2em;
+            }
+            
+            .dashboard-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🎮 Journeyman Analytics Hub</h1>
+            <p>Choose your preferred dashboard experience to monitor player analytics, game performance, and real-time insights.</p>
+        </div>
+
+        <div class="status-section">
+            <h3 style="margin-bottom: 15px;">🔌 System Status</h3>
+            <div class="status-item">
+                <span>Backend Server</span>
+                <span style="display: flex; align-items: center;">
+                    <span id="backendStatus">Checking...</span>
+                    <div class="status-indicator" id="backendIndicator"></div>
+                </span>
+            </div>
+            <div class="status-item">
+                <span>Database Connection</span>
+                <span style="display: flex; align-items: center;">
+                    <span id="dbStatus">Checking...</span>
+                    <div class="status-indicator" id="dbIndicator"></div>
+                </span>
+            </div>
+            <div class="status-item">
+                <span>Total Players</span>
+                <span id="totalPlayers">--</span>
+            </div>
+            <div class="status-item">
+                <span>Active Today</span>
+                <span id="activeToday">--</span>
+            </div>
+        </div>
+
+        <div class="dashboard-grid">
+            <div class="dashboard-card" onclick="openDashboard('enhanced-dashboard.html')">
+                <div class="dashboard-icon">📊</div>
+                <div class="dashboard-title">Enhanced Dashboard</div>
+                <div class="dashboard-description">
+                    Comprehensive analytics with beautiful charts, real-time updates, and advanced features.
+                </div>
+                <ul class="dashboard-features">
+                    <li>Interactive charts and graphs</li>
+                    <li>Auto-refresh capabilities</li>
+                    <li>Export functionality</li>
+                    <li>Player search and filtering</li>
+                    <li>Fullscreen mode</li>
+                </ul>
+            </div>
+
+            <div class="dashboard-card" onclick="openDashboard('mobile-dashboard.html')">
+                <div class="dashboard-icon">📱</div>
+                <div class="dashboard-title">Mobile Dashboard</div>
+                <div class="dashboard-description">
+                    Optimized for mobile devices with essential metrics and touch-friendly interface.
+                </div>
+                <ul class="dashboard-features">
+                    <li>Mobile-optimized design</li>
+                    <li>Essential metrics only</li>
+                    <li>Fast loading</li>
+                    <li>Touch-friendly controls</li>
+                    <li>Offline indicators</li>
+                </ul>
+            </div>
+
+            <div class="dashboard-card" onclick="openDashboard('realtime-dashboard.html')">
+                <div class="dashboard-icon">🔴</div>
+                <div class="dashboard-title">Real-time Dashboard</div>
+                <div class="dashboard-description">
+                    Live activity monitoring with streaming data and immersive dark theme.
+                </div>
+                <ul class="dashboard-features">
+                    <li>Live activity feed</li>
+                    <li>Real-time charts</li>
+                    <li>Dark theme design</li>
+                    <li>Live indicators</li>
+                    <li>Activity streaming</li>
+                </ul>
+            </div>
+
+            <div class="dashboard-card" onclick="openDashboard('index.html')">
+                <div class="dashboard-icon">📈</div>
+                <div class="dashboard-title">Classic Dashboard</div>
+                <div class="dashboard-description">
+                    Original dashboard with core analytics and traditional interface design.
+                </div>
+                <ul class="dashboard-features">
+                    <li>Core analytics</li>
+                    <li>Traditional design</li>
+                    <li>Stable and reliable</li>
+                    <li>Basic charts</li>
+                    <li>Simple interface</li>
+                </ul>
+            </div>
+        </div>
+
+        <div class="action-buttons">
+            <a href="#" class="action-btn" onclick="checkSystemStatus()">🔄 Refresh Status</a>
+            <a href="../src/App.js" class="action-btn">🎮 View Game Code</a>
+            <a href="../backend/server.js" class="action-btn">⚙️ View Backend</a>
+            <a href="https://github.com" class="action-btn" target="_blank">📚 Documentation</a>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE = 'http://localhost:3001';
+        
+        // Check system status on load
+        document.addEventListener('DOMContentLoaded', function() {
+            checkSystemStatus();
+            
+            // Auto-refresh status every 30 seconds
+            setInterval(checkSystemStatus, 30000);
+        });
+        
+        async function checkSystemStatus() {
+            try {
+                // Check backend health
+                const healthResponse = await fetch(`${API_BASE}/health`);
+                const healthData = await healthResponse.json();
+                
+                // Update backend status
+                const backendStatus = document.getElementById('backendStatus');
+                const backendIndicator = document.getElementById('backendIndicator');
+                
+                if (healthResponse.ok && healthData.status === 'healthy') {
+                    backendStatus.textContent = 'Online';
+                    backendIndicator.className = 'status-indicator status-online';
+                } else {
+                    backendStatus.textContent = 'Issues Detected';
+                    backendIndicator.className = 'status-indicator status-offline';
+                }
+                
+                // Update database status
+                const dbStatus = document.getElementById('dbStatus');
+                const dbIndicator = document.getElementById('dbIndicator');
+                
+                if (healthData.database === 'connected') {
+                    dbStatus.textContent = 'Connected';
+                    dbIndicator.className = 'status-indicator status-online';
+                } else {
+                    dbStatus.textContent = 'Disconnected';
+                    dbIndicator.className = 'status-indicator status-offline';
+                }
+                
+                // Get analytics data
+                try {
+                    const analyticsResponse = await fetch(`${API_BASE}/analytics`);
+                    const analyticsData = await analyticsResponse.json();
+                    
+                    document.getElementById('totalPlayers').textContent = analyticsData.totalPlayers || '0';
+                    document.getElementById('activeToday').textContent = analyticsData.activeToday || '0';
+                } catch (err) {
+                    document.getElementById('totalPlayers').textContent = '--';
+                    document.getElementById('activeToday').textContent = '--';
+                }
+                
+            } catch (error) {
+                console.error('Status check failed:', error);
+                
+                // Set all indicators to offline
+                document.getElementById('backendStatus').textContent = 'Offline';
+                document.getElementById('backendIndicator').className = 'status-indicator status-offline';
+                document.getElementById('dbStatus').textContent = 'Unknown';
+                document.getElementById('dbIndicator').className = 'status-indicator status-offline';
+                document.getElementById('totalPlayers').textContent = '--';
+                document.getElementById('activeToday').textContent = '--';
+            }
+        }
+        
+        function openDashboard(dashboardFile) {
+            // Open dashboard in new tab
+            window.open(dashboardFile, '_blank');
+        }
+        
+        // Add some visual feedback
+        document.querySelectorAll('.dashboard-card').forEach(card => {
+            card.addEventListener('mouseenter', function() {
+                this.style.transform = 'translateY(-10px) scale(1.02)';
+            });
+            
+            card.addEventListener('mouseleave', function() {
+                this.style.transform = 'translateY(0) scale(1)';
+            });
+        });
+    </script>
+</body>
+</html>

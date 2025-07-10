@@ -1,0 +1,828 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Journeyman Analytics - Enhanced Dashboard</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/date-fns@2.29.0/index.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            color: #333;
+        }
+        
+        .dashboard {
+            max-width: 1600px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        
+        .header {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            border-radius: 20px;
+            padding: 30px;
+            margin-bottom: 30px;
+            text-align: center;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.1);
+        }
+        
+        .header h1 {
+            font-size: 2.5em;
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            background-clip: text;
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            margin-bottom: 10px;
+        }
+        
+        .controls {
+            display: flex;
+            gap: 20px;
+            align-items: center;
+            background: rgba(255, 255, 255, 0.9);
+            padding: 20px;
+            border-radius: 15px;
+            margin-bottom: 30px;
+            flex-wrap: wrap;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+        }
+        
+        .control-group {
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+        }
+        
+        label {
+            font-weight: 600;
+            color: #555;
+            font-size: 0.9em;
+        }
+        
+        select, button {
+            padding: 10px 15px;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            font-size: 14px;
+            transition: all 0.3s ease;
+        }
+        
+        select:focus, button:hover {
+            border-color: #667eea;
+            outline: none;
+        }
+        
+        button {
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            color: white;
+            border: none;
+            cursor: pointer;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+        
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+        }
+        
+        .metrics-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+        
+        .metric-card {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            padding: 25px;
+            border-radius: 15px;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.1);
+            text-align: center;
+            transition: transform 0.3s ease;
+        }
+        
+        .metric-card:hover {
+            transform: translateY(-5px);
+        }
+        
+        .metric-value {
+            font-size: 3em;
+            font-weight: bold;
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            background-clip: text;
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            margin: 15px 0;
+        }
+        
+        .metric-label {
+            color: #666;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        
+        .metric-change {
+            margin-top: 10px;
+            font-size: 0.9em;
+            padding: 5px 10px;
+            border-radius: 20px;
+        }
+        
+        .metric-change.positive {
+            background: #e8f5e8;
+            color: #2e7d2e;
+        }
+        
+        .metric-change.negative {
+            background: #ffe8e8;
+            color: #d32f2f;
+        }
+        
+        .charts-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(500px, 1fr));
+            gap: 30px;
+            margin-bottom: 30px;
+        }
+        
+        .chart-container {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            padding: 25px;
+            border-radius: 15px;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.1);
+        }
+        
+        .chart-title {
+            font-size: 1.3em;
+            font-weight: 600;
+            margin-bottom: 20px;
+            text-align: center;
+            color: #333;
+        }
+        
+        .data-table {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            border-radius: 15px;
+            padding: 25px;
+            margin-bottom: 30px;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.1);
+        }
+        
+        .search-box {
+            width: 100%;
+            padding: 15px;
+            border: 2px solid #e0e0e0;
+            border-radius: 10px;
+            margin-bottom: 20px;
+            font-size: 16px;
+        }
+        
+        .search-box:focus {
+            border-color: #667eea;
+            outline: none;
+        }
+        
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+        }
+        
+        th, td {
+            padding: 15px;
+            text-align: left;
+            border-bottom: 1px solid #eee;
+        }
+        
+        th {
+            background: #f8f9fa;
+            font-weight: 600;
+            color: #555;
+        }
+        
+        tr:hover {
+            background: #f5f5f5;
+        }
+        
+        .loading {
+            text-align: center;
+            padding: 50px;
+            font-size: 1.2em;
+            color: white;
+        }
+        
+        .error {
+            background: #ffebee;
+            color: #c62828;
+            padding: 20px;
+            border-radius: 10px;
+            margin: 20px 0;
+            text-align: center;
+        }
+        
+        .auto-refresh {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .switch {
+            position: relative;
+            width: 60px;
+            height: 30px;
+        }
+        
+        .switch input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+        
+        .slider {
+            position: absolute;
+            cursor: pointer;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: #ccc;
+            transition: .4s;
+            border-radius: 30px;
+        }
+        
+        .slider:before {
+            position: absolute;
+            content: "";
+            height: 22px;
+            width: 22px;
+            left: 4px;
+            bottom: 4px;
+            background-color: white;
+            transition: .4s;
+            border-radius: 50%;
+        }
+        
+        input:checked + .slider {
+            background-color: #667eea;
+        }
+        
+        input:checked + .slider:before {
+            transform: translateX(30px);
+        }
+        
+        @media (max-width: 768px) {
+            .charts-grid {
+                grid-template-columns: 1fr;
+            }
+            
+            .controls {
+                flex-direction: column;
+                align-items: stretch;
+            }
+            
+            .control-group {
+                align-items: center;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="dashboard">
+        <div class="header">
+            <h1>🎮 Journeyman Analytics</h1>
+            <p>Enhanced real-time dashboard with advanced insights</p>
+            <div style="margin-top: 15px; font-size: 0.9em; opacity: 0.8;">
+                Last updated: <span id="lastUpdated">Loading...</span>
+            </div>
+        </div>
+
+        <div class="controls">
+            <div class="control-group">
+                <label>Game Type</label>
+                <select id="gameType">
+                    <option value="journeyman">Journeyman</option>
+                    <option value="">All Games</option>
+                </select>
+            </div>
+            
+            <div class="control-group">
+                <label>Time Period</label>
+                <select id="period">
+                    <option value="day">Today</option>
+                    <option value="week" selected>This Week</option>
+                    <option value="month">This Month</option>
+                    <option value="all">All Time</option>
+                </select>
+            </div>
+            
+            <div class="auto-refresh">
+                <label>Auto Refresh</label>
+                <label class="switch">
+                    <input type="checkbox" id="autoRefresh" checked>
+                    <span class="slider"></span>
+                </label>
+            </div>
+            
+            <button onclick="refreshDashboard()">🔄 Refresh</button>
+            <button onclick="exportData()">📊 Export CSV</button>
+            <button onclick="toggleFullscreen()">📺 Fullscreen</button>
+        </div>
+
+        <div id="loading" class="loading">
+            🎯 Loading dashboard data...
+        </div>
+
+        <div id="error" class="error" style="display: none;"></div>
+
+        <div id="content" style="display: none;">
+            <div class="metrics-grid" id="metricsGrid">
+                <!-- Metrics will be populated here -->
+            </div>
+
+            <div class="charts-grid">
+                <div class="chart-container">
+                    <div class="chart-title">📈 Player Activity Trends</div>
+                    <canvas id="activityChart"></canvas>
+                </div>
+                
+                <div class="chart-container">
+                    <div class="chart-title">🎯 Performance Distribution</div>
+                    <canvas id="performanceChart"></canvas>
+                </div>
+                
+                <div class="chart-container">
+                    <div class="chart-title">👥 Player Skill Levels</div>
+                    <canvas id="skillChart"></canvas>
+                </div>
+                
+                <div class="chart-container">
+                    <div class="chart-title">📊 Game Completion Rates</div>
+                    <canvas id="completionChart"></canvas>
+                </div>
+            </div>
+
+            <div class="data-table">
+                <h3>🏆 Top Players</h3>
+                <input type="text" class="search-box" id="playerSearch" placeholder="🔍 Search players...">
+                <div id="leaderboardTable"></div>
+            </div>
+
+            <div class="data-table">
+                <h3>🎮 Recent Game Sessions</h3>
+                <div id="recentSessions"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Configuration
+        const API_BASE = 'http://localhost:3001';
+        let refreshInterval;
+        let charts = {};
+        
+        // Initialize dashboard
+        document.addEventListener('DOMContentLoaded', function() {
+            setupEventListeners();
+            refreshDashboard();
+            setupAutoRefresh();
+        });
+        
+        function setupEventListeners() {
+            document.getElementById('gameType').addEventListener('change', refreshDashboard);
+            document.getElementById('period').addEventListener('change', refreshDashboard);
+            document.getElementById('autoRefresh').addEventListener('change', setupAutoRefresh);
+            document.getElementById('playerSearch').addEventListener('input', filterPlayers);
+        }
+        
+        function setupAutoRefresh() {
+            const autoRefresh = document.getElementById('autoRefresh').checked;
+            
+            if (refreshInterval) {
+                clearInterval(refreshInterval);
+            }
+            
+            if (autoRefresh) {
+                refreshInterval = setInterval(refreshDashboard, 30000); // 30 seconds
+            }
+        }
+        
+        async function refreshDashboard() {
+            const loading = document.getElementById('loading');
+            const content = document.getElementById('content');
+            const error = document.getElementById('error');
+            
+            loading.style.display = 'block';
+            content.style.display = 'none';
+            error.style.display = 'none';
+            
+            try {
+                const gameType = document.getElementById('gameType').value;
+                const period = document.getElementById('period').value;
+                
+                // Fetch all data in parallel
+                const [analytics, leaderboard, trends] = await Promise.all([
+                    fetchData(`/analytics${gameType ? `/${gameType}` : ''}`),
+                    fetchData(`/leaderboard${gameType ? `/${gameType}` : ''}`),
+                    fetchData(`/trends${gameType ? `/${gameType}` : ''}`)
+                ]);
+                
+                updateMetrics(analytics);
+                updateCharts(analytics, trends);
+                updateLeaderboard(leaderboard);
+                updateRecentSessions(analytics.recentSessions || []);
+                
+                document.getElementById('lastUpdated').textContent = new Date().toLocaleString();
+                
+                loading.style.display = 'none';
+                content.style.display = 'block';
+                
+            } catch (err) {
+                console.error('Dashboard error:', err);
+                showError('Failed to load dashboard data. Please check your connection and try again.');
+                loading.style.display = 'none';
+            }
+        }
+        
+        async function fetchData(endpoint) {
+            const response = await fetch(`${API_BASE}${endpoint}`);
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+            }
+            return response.json();
+        }
+        
+        function updateMetrics(analytics) {
+            const metrics = [
+                {
+                    label: 'Total Players',
+                    value: analytics.totalPlayers || 0,
+                    change: analytics.playerGrowth || 0,
+                    icon: '👥'
+                },
+                {
+                    label: 'Game Sessions',
+                    value: analytics.totalSessions || 0,
+                    change: analytics.sessionGrowth || 0,
+                    icon: '🎮'
+                },
+                {
+                    label: 'Avg Score',
+                    value: Math.round(analytics.averageScore || 0),
+                    change: analytics.scoreImprovement || 0,
+                    icon: '🎯'
+                },
+                {
+                    label: 'Completion Rate',
+                    value: `${Math.round((analytics.completionRate || 0) * 100)}%`,
+                    change: analytics.completionImprovement || 0,
+                    icon: '✅'
+                },
+                {
+                    label: 'Avg Duration',
+                    value: formatDuration(analytics.averageDuration || 0),
+                    change: analytics.durationChange || 0,
+                    icon: '⏱️'
+                },
+                {
+                    label: 'Active Today',
+                    value: analytics.activeToday || 0,
+                    change: analytics.dailyGrowth || 0,
+                    icon: '🔥'
+                }
+            ];
+            
+            const grid = document.getElementById('metricsGrid');
+            grid.innerHTML = metrics.map(metric => `
+                <div class="metric-card">
+                    <div style="font-size: 2em; margin-bottom: 10px;">${metric.icon}</div>
+                    <div class="metric-value">${metric.value}</div>
+                    <div class="metric-label">${metric.label}</div>
+                    ${metric.change !== 0 ? `
+                        <div class="metric-change ${metric.change > 0 ? 'positive' : 'negative'}">
+                            ${metric.change > 0 ? '↗️' : '↘️'} ${Math.abs(metric.change)}%
+                        </div>
+                    ` : ''}
+                </div>
+            `).join('');
+        }
+        
+        function updateCharts(analytics, trends) {
+            // Activity Chart
+            updateActivityChart(trends.dailyActivity || []);
+            
+            // Performance Chart
+            updatePerformanceChart(analytics.scoreDistribution || {});
+            
+            // Skill Chart
+            updateSkillChart(analytics.skillLevels || {});
+            
+            // Completion Chart
+            updateCompletionChart(analytics.completionByDifficulty || {});
+        }
+        
+        function updateActivityChart(dailyActivity) {
+            const ctx = document.getElementById('activityChart').getContext('2d');
+            
+            if (charts.activity) {
+                charts.activity.destroy();
+            }
+            
+            const labels = dailyActivity.map(d => new Date(d.date).toLocaleDateString());
+            const data = dailyActivity.map(d => d.sessions);
+            
+            charts.activity = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: 'Game Sessions',
+                        data: data,
+                        borderColor: '#667eea',
+                        backgroundColor: 'rgba(102, 126, 234, 0.1)',
+                        tension: 0.4,
+                        fill: true
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    plugins: {
+                        legend: {
+                            display: false
+                        }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true
+                        }
+                    }
+                }
+            });
+        }
+        
+        function updatePerformanceChart(scoreDistribution) {
+            const ctx = document.getElementById('performanceChart').getContext('2d');
+            
+            if (charts.performance) {
+                charts.performance.destroy();
+            }
+            
+            const ranges = ['0-20', '21-40', '41-60', '61-80', '81-100'];
+            const data = ranges.map(range => scoreDistribution[range] || 0);
+            
+            charts.performance = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: ranges,
+                    datasets: [{
+                        label: 'Players',
+                        data: data,
+                        backgroundColor: [
+                            '#ff6b6b',
+                            '#ffa726',
+                            '#ffee58',
+                            '#66bb6a',
+                            '#42a5f5'
+                        ]
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    plugins: {
+                        legend: {
+                            display: false
+                        }
+                    }
+                }
+            });
+        }
+        
+        function updateSkillChart(skillLevels) {
+            const ctx = document.getElementById('skillChart').getContext('2d');
+            
+            if (charts.skill) {
+                charts.skill.destroy();
+            }
+            
+            const labels = Object.keys(skillLevels);
+            const data = Object.values(skillLevels);
+            
+            charts.skill = new Chart(ctx, {
+                type: 'doughnut',
+                data: {
+                    labels: labels.map(l => l.charAt(0).toUpperCase() + l.slice(1)),
+                    datasets: [{
+                        data: data,
+                        backgroundColor: [
+                            '#667eea',
+                            '#764ba2',
+                            '#f093fb',
+                            '#f5576c',
+                            '#4facfe'
+                        ]
+                    }]
+                },
+                options: {
+                    responsive: true
+                }
+            });
+        }
+        
+        function updateCompletionChart(completionData) {
+            const ctx = document.getElementById('completionChart').getContext('2d');
+            
+            if (charts.completion) {
+                charts.completion.destroy();
+            }
+            
+            const labels = Object.keys(completionData);
+            const completed = labels.map(l => completionData[l].completed || 0);
+            const total = labels.map(l => completionData[l].total || 0);
+            
+            charts.completion = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: 'Completed',
+                        data: completed,
+                        backgroundColor: '#66bb6a'
+                    }, {
+                        label: 'Total',
+                        data: total,
+                        backgroundColor: '#e0e0e0'
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    scales: {
+                        x: {
+                            stacked: false
+                        },
+                        y: {
+                            stacked: false
+                        }
+                    }
+                }
+            });
+        }
+        
+        function updateLeaderboard(leaderboard) {
+            const container = document.getElementById('leaderboardTable');
+            
+            if (!leaderboard || leaderboard.length === 0) {
+                container.innerHTML = '<p>No players found.</p>';
+                return;
+            }
+            
+            const table = `
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Rank</th>
+                            <th>Player</th>
+                            <th>Score</th>
+                            <th>Games</th>
+                            <th>Skill Level</th>
+                            <th>Last Played</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${leaderboard.map((player, index) => `
+                            <tr>
+                                <td>${index + 1}</td>
+                                <td>${player.playerName || 'Anonymous'}</td>
+                                <td>${player.bestScore || 0}</td>
+                                <td>${player.gamesPlayed || 0}</td>
+                                <td>${player.skillLevel || 'Unknown'}</td>
+                                <td>${new Date(player.lastPlayed).toLocaleDateString()}</td>
+                            </tr>
+                        `).join('')}
+                    </tbody>
+                </table>
+            `;
+            
+            container.innerHTML = table;
+        }
+        
+        function updateRecentSessions(sessions) {
+            const container = document.getElementById('recentSessions');
+            
+            if (!sessions || sessions.length === 0) {
+                container.innerHTML = '<p>No recent sessions found.</p>';
+                return;
+            }
+            
+            const table = `
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Player</th>
+                            <th>Score</th>
+                            <th>Duration</th>
+                            <th>Completed</th>
+                            <th>Time</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${sessions.slice(0, 10).map(session => `
+                            <tr>
+                                <td>${session.playerName || 'Anonymous'}</td>
+                                <td>${session.score || 0}</td>
+                                <td>${formatDuration(session.duration || 0)}</td>
+                                <td>${session.completed ? '✅' : '❌'}</td>
+                                <td>${new Date(session.timestamp).toLocaleString()}</td>
+                            </tr>
+                        `).join('')}
+                    </tbody>
+                </table>
+            `;
+            
+            container.innerHTML = table;
+        }
+        
+        function filterPlayers() {
+            const search = document.getElementById('playerSearch').value.toLowerCase();
+            const rows = document.querySelectorAll('#leaderboardTable tbody tr');
+            
+            rows.forEach(row => {
+                const playerName = row.cells[1].textContent.toLowerCase();
+                row.style.display = playerName.includes(search) ? '' : 'none';
+            });
+        }
+        
+        function formatDuration(seconds) {
+            const mins = Math.floor(seconds / 60);
+            const secs = seconds % 60;
+            return `${mins}:${secs.toString().padStart(2, '0')}`;
+        }
+        
+        function showError(message) {
+            const error = document.getElementById('error');
+            error.textContent = message;
+            error.style.display = 'block';
+        }
+        
+        async function exportData() {
+            try {
+                const gameType = document.getElementById('gameType').value;
+                const analytics = await fetchData(`/analytics${gameType ? `/${gameType}` : ''}`);
+                const leaderboard = await fetchData(`/leaderboard${gameType ? `/${gameType}` : ''}`);
+                
+                const csvData = leaderboard.map(player => ({
+                    name: player.playerName || 'Anonymous',
+                    email: player.email || '',
+                    score: player.bestScore || 0,
+                    games: player.gamesPlayed || 0,
+                    skillLevel: player.skillLevel || 'Unknown',
+                    lastPlayed: player.lastPlayed
+                }));
+                
+                downloadCSV(csvData, `journeyman-analytics-${new Date().toISOString().split('T')[0]}.csv`);
+                
+            } catch (err) {
+                alert('Failed to export data: ' + err.message);
+            }
+        }
+        
+        function downloadCSV(data, filename) {
+            const csv = [
+                Object.keys(data[0]).join(','),
+                ...data.map(row => Object.values(row).join(','))
+            ].join('\n');
+            
+            const blob = new Blob([csv], { type: 'text/csv' });
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = filename;
+            a.click();
+            window.URL.revokeObjectURL(url);
+        }
+        
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen();
+            } else {
+                document.exitFullscreen();
+            }
+        }
+    </script>
+</body>
+</html>
