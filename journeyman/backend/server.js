@@ -38,6 +38,7 @@ async function initializeDatabase() {
         correct_count INTEGER DEFAULT 0,
         shared_on_social BOOLEAN DEFAULT FALSE,
         session_data JSONB DEFAULT '{}',
+        started_at TIMESTAMP DEFAULT NOW(),
         created_at TIMESTAMP DEFAULT NOW()
       )
     `);
@@ -113,7 +114,8 @@ async function ensureColumnsExist() {
       { column: 'guesses', type: 'JSONB', default: "'[]'" },
       { column: 'correct_count', type: 'INTEGER', default: '0' },
       { column: 'shared_on_social', type: 'BOOLEAN', default: 'FALSE' },
-      { column: 'session_data', type: 'JSONB', default: "'{}'" }
+      { column: 'session_data', type: 'JSONB', default: "'{}'" },
+      { column: 'started_at', type: 'TIMESTAMP', default: 'NOW()' }
     ];
     
     for (const col of columnsToCheck) {
@@ -140,6 +142,81 @@ async function ensureColumnsExist() {
 
 // Initialize database on startup
 initializeDatabase();
+
+// Start a new game session
+app.post('/start-game', async (req, res) => {
+  try {
+    const { email, name, gameType = 'journeyman', difficulty } = req.body;
+    if (!email || !name) {
+      return res.status(400).json({ success: false, error: 'Name and email are required' });
+    }
+
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      const cleanEmail = email.toLowerCase().trim();
+      const cleanName = name.trim();
+      let playerId;
+
+      const playerRes = await client.query('SELECT id FROM players WHERE email=$1', [cleanEmail]);
+      if (playerRes.rows.length > 0) {
+        playerId = playerRes.rows[0].id;
+        await client.query('UPDATE players SET name=$1 WHERE id=$2', [cleanName, playerId]);
+      } else {
+        const newPlayer = await client.query('INSERT INTO players (name, email) VALUES ($1,$2) RETURNING id', [cleanName, cleanEmail]);
+        playerId = newPlayer.rows[0].id;
+      }
+
+      const sessionRes = await client.query(
+        `INSERT INTO game_sessions (player_id, game_type, mode, session_data, started_at)
+         VALUES ($1,$2,$3,$4,NOW()) RETURNING id`,
+        [playerId, gameType, difficulty || null, JSON.stringify({})]
+      );
+      await client.query('COMMIT');
+      return res.json({ success: true, sessionId: sessionRes.rows[0].id });
+    } catch (err) {
+      await client.query('ROLLBACK');
+      console.error('❌ start-game error:', err);
+      return res.status(500).json({ success: false, error: 'Failed to start game' });
+    } finally {
+      client.release();
+    }
+  } catch (err) {
+    console.error('❌ start-game error:', err);
+    res.status(500).json({ success: false, error: 'Failed to start game' });
+  }
+});
+
+// Complete a game session and log events
+app.post('/complete-game', async (req, res) => {
+  const { sessionId, durationInSeconds, guesses, correctCount, sharedOnSocial, sessionData = {} } = req.body;
+  if (!sessionId) {
+    return res.status(400).json({ success: false, error: 'sessionId required' });
+  }
+  try {
+    await pool.query(
+      `UPDATE game_sessions
+       SET duration_seconds=$1,
+           guesses=$2,
+           correct_count=$3,
+           shared_on_social=$4,
+           session_data=$5
+       WHERE id=$6`,
+      [
+        durationInSeconds || 0,
+        JSON.stringify(guesses || []),
+        correctCount || 0,
+        sharedOnSocial || false,
+        JSON.stringify(sessionData),
+        sessionId
+      ]
+    );
+    res.json({ success: true });
+  } catch (err) {
+    console.error('❌ complete-game error:', err);
+    res.status(500).json({ success: false, error: 'Failed to complete game' });
+  }
+});
 
 app.post('/save-player', async (req, res) => {
   const client = await pool.connect();

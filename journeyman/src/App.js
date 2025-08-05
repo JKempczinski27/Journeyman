@@ -3,6 +3,9 @@ import React, { useState, useEffect } from 'react';
 import { Box, Typography, TextField, Button, Stack } from '@mui/material';
 import teamLogos from './TeamLogos.js';
 import './App.css'; // Assuming you have some basic styles in App.css
+import Modal from './components/Modal';
+import useOneTrust from './hooks/useOneTrust';
+import { logEvent, flushEvents } from './utils/logEvent';
 
 const playersData = [
     {
@@ -63,6 +66,10 @@ export default function App() {
     const [sharedOnSocial, setSharedOnSocial] = useState(false);
     const [gameEnded, setGameEnded] = useState(false);
     const [gameEndMessage, setGameEndMessage] = useState('');
+    const [sessionId, setSessionId] = useState(null);
+    const [modalConfig, setModalConfig] = useState(null);
+    const [questionStart, setQuestionStart] = useState(null);
+    const { consentGranted, Overlay: ConsentOverlay } = useOneTrust();
 
     const currentPlayer = playersData[currentIndex];
 
@@ -76,16 +83,23 @@ export default function App() {
     }, [currentIndex, challengeMode]);
 
     useEffect(() => {
-        if (page === 'game') {
-            setStartTime(Date.now());
+        if (startTime) {
+            logEvent('question_display', { index: currentIndex });
+            setQuestionStart(Date.now());
         }
-    }, [page]);
+        // eslint-disable-next-line
+    }, [currentIndex, startTime]);
 
     const handleGuess = () => {
         const trimmedGuess = guess.trim();
+        const now = Date.now();
+        const timeTaken = questionStart ? now - questionStart : null;
+        const correct = trimmedGuess.toLowerCase() === currentPlayer.name.toLowerCase();
+        logEvent('guess', { guess: trimmedGuess, correct, timeTaken });
+        setQuestionStart(now);
         setGuesses(prev => [...prev, trimmedGuess]);
 
-        if (trimmedGuess.toLowerCase() === currentPlayer.name.toLowerCase()) {
+        if (correct) {
             setFeedback('✅ Correct!');
             setCorrectCount(prev => prev + 1);
         } else {
@@ -94,60 +108,125 @@ export default function App() {
     };
 
     const nextPlayer = () => {
+        logEvent('skip', { from: currentIndex });
         setFeedback('');
         setGuess('');
         setCurrentIndex((prev) => (prev + 1) % playersData.length);
     };
 
-    const sendGameData = async (durationOverride) => {
-        console.log('🎯 sendGameData called with:', {
-            mode: challengeMode ? 'challenge' : 'easy',
-            durationOverride,
-            guesses,
-            correctCount
+    const handleGameStart = async () => {
+        if (!consentGranted) return;
+        setModalConfig(null);
+        try {
+            const response = await fetch('http://localhost:3001/start-game', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    name: playerName,
+                    email: playerEmail,
+                    gameType: 'journeyman',
+                    difficulty: challengeMode ? 'challenge' : 'easy'
+                })
+            });
+            const result = await response.json();
+            if (result.sessionId) {
+                setSessionId(result.sessionId);
+                logEvent('session_start', { sessionId: result.sessionId });
+            }
+        } catch (err) {
+            setModalConfig({
+                title: 'Error',
+                message: 'Failed to start game.',
+                buttons: [{ label: 'Close', onClick: () => setModalConfig(null) }],
+                onClose: () => setModalConfig(null)
+            });
+            return;
+        }
+        const now = Date.now();
+        setStartTime(now);
+        setQuestionStart(now);
+    };
+
+    const showResultModal = () => {
+        const timeDisplay = `${Math.floor(durationInSeconds / 60)}:${(durationInSeconds % 60).toString().padStart(2, '0')}`;
+        const share = (platform) => {
+            setSharedOnSocial(true);
+            logEvent('share', { platform });
+        };
+        setModalConfig({
+            title: 'Game Complete!',
+            message: (
+                <div>
+                    <p>Score: {correctCount} correct</p>
+                    <p>Time: {timeDisplay}</p>
+                    <div style={{ display: 'flex', justifyContent: 'center', gap: '1rem', marginTop: '1rem' }}>
+                        <a href="https://www.facebook.com/sharer/sharer.php?u=https://yourgameurl.com" target="_blank" rel="noopener noreferrer" onClick={() => share('facebook')}><img src="https://cdn.jsdelivr.net/npm/simple-icons@v11/icons/facebook.svg" alt="Facebook" width={24} height={24} /></a>
+                        <a href="https://twitter.com/intent/tweet?url=https://yourgameurl.com" target="_blank" rel="noopener noreferrer" onClick={() => share('twitter')}><img src="https://cdn.jsdelivr.net/npm/simple-icons@v11/icons/x.svg" alt="Twitter" width={24} height={24} /></a>
+                        <a href="https://www.reddit.com/submit?url=https://yourgameurl.com" target="_blank" rel="noopener noreferrer" onClick={() => share('reddit')}><img src="https://cdn.jsdelivr.net/npm/simple-icons@v11/icons/reddit.svg" alt="Reddit" width={24} height={24} /></a>
+                    </div>
+                </div>
+            ),
+            buttons: [{ label: 'Play Again', onClick: () => window.location.reload() }],
+            onClose: () => window.location.reload()
         });
-        
+    };
+
+    const startGamePage = (isChallenge) => {
+        setChallengeMode(isChallenge);
+        setPage('game');
+        setModalConfig({
+            title: 'Are you ready?',
+            message: 'Get ready to start the game!',
+            buttons: [{ label: 'Start', onClick: handleGameStart }],
+            onClose: handleGameStart
+        });
+    };
+
+    const sendGameData = async (durationOverride, events) => {
         try {
             const gameData = {
-                name: playerName,
-                email: playerEmail,
-                mode: challengeMode ? 'challenge' : 'easy',
+                sessionId,
                 durationInSeconds: durationOverride ?? durationInSeconds,
                 guesses,
                 correctCount,
                 sharedOnSocial,
-                gameSpecificData: {
+                sessionData: {
                     currentPlayerIndex: currentIndex,
                     currentPlayerName: currentPlayer.name,
                     totalPlayers: playersData.length,
                     challengeMode,
-                    guessDetails: guesses.map((guess, index) => ({
-                        guess,
-                        correct: guess.toLowerCase() === currentPlayer.name.toLowerCase(),
-                        timestamp: new Date().toISOString()
-                    }))
+                    events,
                 }
             };
 
-            console.log('🚀 Sending game data:', gameData);
-
-            const response = await fetch('https://journeyman-production.up.railway.app/save-player', {
+            const response = await fetch('http://localhost:3001/complete-game', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(gameData),
             });
 
             const result = await response.json();
-            console.log('✅ Game data response:', result);
-            
             if (result.success) {
                 setGameEndMessage('🎮 Game data saved successfully! Thanks for playing!');
+                return true;
             } else {
-                setGameEndMessage('⚠️ Game saved, but there was an issue with the data.');
+                setModalConfig({
+                    title: 'Error',
+                    message: 'Game saved, but there was an issue with the data.',
+                    buttons: [{ label: 'Close', onClick: () => setModalConfig(null) }],
+                    onClose: () => setModalConfig(null)
+                });
+                return false;
             }
         } catch (err) {
             console.error('❌ Failed to send game data:', err);
-            setGameEndMessage('❌ Failed to save game data, but thanks for playing!');
+            setModalConfig({
+                title: 'Error',
+                message: 'Failed to save game data, but thanks for playing!',
+                buttons: [{ label: 'Close', onClick: () => setModalConfig(null) }],
+                onClose: () => setModalConfig(null)
+            });
+            return false;
         }
     };
 
@@ -157,7 +236,11 @@ export default function App() {
         setDurationInSeconds(duration);
         setGameEnded(true);
         setFeedback('🎯 Finishing game...');
-        await sendGameData(duration);
+        const events = flushEvents();
+        const success = await sendGameData(duration, events);
+        if (success) {
+            showResultModal();
+        }
     };
 
     const handleFormSubmit = async (e) => {
@@ -202,6 +285,8 @@ export default function App() {
                     px: 2,
                 }}
             >
+                <ConsentOverlay />
+                {modalConfig && <Modal {...modalConfig} />}
                 <Box
                     component="form"
                     onSubmit={handleFormSubmit}
@@ -267,6 +352,8 @@ export default function App() {
                     px: 2,
                 }}
             >
+                <ConsentOverlay />
+                {modalConfig && <Modal {...modalConfig} />}
                 <Typography variant="h2" gutterBottom sx={{ fontWeight: 'bold', letterSpacing: 2, fontFamily: 'Endzone' }}>
                     Journeyman
                 </Typography>
@@ -320,10 +407,7 @@ export default function App() {
                     <Button
                         variant="contained"
                         size="large"
-                        onClick={() => {
-                            setChallengeMode(false);
-                            setPage('game');
-                        }}
+                        onClick={() => startGamePage(false)}
                         sx={{
                             backgroundColor: '#0B6623',
                             '&:hover': {
@@ -336,10 +420,7 @@ export default function App() {
                     <Button
                         variant="contained"
                         size="large"
-                        onClick={() => {
-                            setChallengeMode(true);
-                            setPage('game');
-                        }}
+                        onClick={() => startGamePage(true)}
                         sx={{
                             backgroundColor: '#D30000',
                             '&:hover': {
@@ -357,6 +438,8 @@ export default function App() {
     // Game page
     return (
         <Box sx={{ padding: 4, textAlign: 'center', color: 'white', fontWeight: 'bold', fontFamily: 'Endzone' }}>
+            <ConsentOverlay />
+            {modalConfig && <Modal {...modalConfig} />}
             <Typography variant="h4" gutterBottom sx={{ fontFamily: 'Endzone' }}>
                 Who Am I?
             </Typography>
@@ -457,32 +540,10 @@ export default function App() {
                         {gameEndMessage}
                     </Typography>
                 )}
-                {gameEnded && (
-                    <Box mt={3}>
-                        <Typography sx={{ fontFamily: 'Endzone', color: '#FFD700' }}>
-                            🏆 Game Complete! 🏆
-                        </Typography>
-                        <Typography sx={{ fontFamily: 'Endzone', fontSize: '0.9rem', mt: 1 }}>
-                            Score: {correctCount} correct | Time: {Math.floor(durationInSeconds / 60)}:{(durationInSeconds % 60).toString().padStart(2, '0')}
-                        </Typography>
-                        <Button 
-                            onClick={() => window.location.reload()} 
-                            variant="contained"
-                            sx={{ 
-                                fontFamily: 'Endzone',
-                                mt: 2,
-                                backgroundColor: '#4CAF50',
-                                '&:hover': { backgroundColor: '#45a049' }
-                            }}
-                        >
-                            Play Again
-                        </Button>
-                    </Box>
-                )}
                 {feedback === '✅ Correct!' && !gameEnded && (
                     <Box mt={4} display="flex" gap={2} justifyContent="center">
-                        <Button 
-                            onClick={nextPlayer} 
+                        <Button
+                            onClick={nextPlayer}
                             variant="contained"
                             sx={{ fontFamily: 'Endzone' }}
                         >
@@ -507,44 +568,6 @@ export default function App() {
                 )}
             </Box>
             
-            <Box mt={4} display="flex" justifyContent="center" gap={2}>
-                <a
-                    href="https://www.facebook.com/sharer/sharer.php?u=https://yourgameurl.com"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    aria-label="Share on Facebook"
-                    onClick={() => setSharedOnSocial(true)}
-                >
-                    <img src="https://cdn.jsdelivr.net/npm/simple-icons@v11/icons/facebook.svg" alt="Facebook" width={32} height={32} style={{ filter: 'invert(1)' }} />
-                </a>
-                <a
-                    href="https://twitter.com/intent/tweet?url=https://yourgameurl.com&text=I%20just%20crushed%20the%20Journeyman%20game!%20Can%20you%20guess%20which%20NFL%20players%20were%20traded%20more%20than%20your%20ex%20changed%20their%20relationship%20status?%20🏈"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    aria-label="Share on Twitter"
-                    onClick={() => setSharedOnSocial(true)}
-                >
-                    <img src="https://cdn.jsdelivr.net/npm/simple-icons@v11/icons/x.svg" alt="Twitter/X" width={32} height={32} style={{ filter: 'invert(1)' }} />
-                </a>
-                <a
-                    href="https://www.reddit.com/submit?url=https://yourgameurl.com&title=This%20NFL%20Journeyman%20guessing%20game%20is%20harder%20than%20it%20looks"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    aria-label="Share on Reddit"
-                    onClick={() => setSharedOnSocial(true)}
-                >
-                    <img src="https://cdn.jsdelivr.net/npm/simple-icons@v11/icons/reddit.svg" alt="Reddit" width={32} height={32} style={{ filter: 'invert(1)' }} />
-                </a>
-                <a
-                    href="https://wa.me/?text=¡Prueba%20el%20juego%20Journeyman!%20¿Crees%20que%20conoces%20la%20historia%20de%20la%20NFL?%20Intenta%20este%20juego%20y%20mira%20si%20puedes%20adivinar%20qué%20jugadores%20cambiaron%20de%20equipo%20como%20si%20fuera%20una%20silla%20musical!%20🏈%20https://yourgameurl.com"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    aria-label="Share on WhatsApp"
-                    onClick={() => setSharedOnSocial(true)}
-                >
-                    <img src="https://cdn.jsdelivr.net/npm/simple-icons@v11/icons/whatsapp.svg" alt="WhatsApp" width={32} height={32} style={{ filter: 'invert(1)' }} />
-                </a>
-            </Box>
         </Box>
     );
 }
