@@ -1,8 +1,11 @@
 // src/JourneymanGame.jsx
-import React, { useState, useEffect } from 'react';
-import { Box, Typography, TextField, Button, Stack } from '@mui/material';
+import React, { Suspense, lazy, useState, useEffect } from 'react';
 import teamLogos from './TeamLogos.js';
 import './App.css'; // Assuming you have some basic styles in App.css
+
+const PlayerForm   = lazy(() => import('./components/PlayerForm'));
+const LandingPage  = lazy(() => import('./components/LandingPage'));
+const GamePage     = lazy(() => import('./components/GamePage'));
 
 const playersData = [
     {
@@ -318,6 +321,7 @@ export default function App() {
                 </Typography>
                 <Stack direction="row" spacing={4} mt={4}>
                     <Button
+                        data-cy="easy-mode"
                         variant="contained"
                         size="large"
                         onClick={() => {
@@ -334,6 +338,7 @@ export default function App() {
                         Easy Mode
                     </Button>
                     <Button
+                        data-cy="challenge-mode"
                         variant="contained"
                         size="large"
                         onClick={() => {
@@ -355,196 +360,203 @@ export default function App() {
     }
 
     // Game page
-    return (
-        <Box sx={{ padding: 4, textAlign: 'center', color: 'white', fontWeight: 'bold', fontFamily: 'Endzone' }}>
-            <Typography variant="h4" gutterBottom sx={{ fontFamily: 'Endzone' }}>
-                Who Am I?
-            </Typography>
-            <Box
-                sx={{
-                    display: 'flex',
-                    justifyContent: 'center',
-                    alignItems: 'center',
-                    mb: 8,
-                }}
-            >
+    if (page === 'game') {
+        const player = playersData[currentIndex];
+        const team = player.teams[0];
+        return (
+            <div>
+                <Typography
+                    data-cy="game-header"
+                    data-testid="game-header"
+                    variant="h4"
+                    gutterBottom
+                    sx={{ fontFamily: 'Endzone' }}
+                >
+                    Who Am I?
+                </Typography>
+
+                {/* add alt here for the player portrait */}
                 <img
-                    src={currentPlayer.image}
-                    width={160}
-                    height={160}
+                    src={player.image}
+                    alt={`Portrait of ${player.name}`}
+                    height="160"
                     style={{
                         borderRadius: '50%',
                         objectFit: 'cover',
-                        filter: feedback === '✅ Correct!' ? 'none' : 'grayscale(1) brightness(0.1)',
+                        filter: 'grayscale(1) brightness(0.1)',
                         transition: 'filter 0.4s',
                         border: '4px solid white',
                         background: '#222',
                     }}
                 />
-            </Box>
-            <Box
-                sx={{
-                    display: 'flex',
-                    justifyContent: 'center',
-                    alignItems: 'center',
-                    gap: 4,
-                    mt: 9,
-                    mb: 8,
-                }}
-            >
-                {shuffledTeams.map((team) => (
-                    <Box
-                        key={team}
-                        sx={{
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            width: 110,
-                            height: 110,
-                            background: 'white',
-                            borderRadius: 3,
-                            boxShadow: 3,
-                            border: '2px solid #eee',
-                            p: 1,
+
+                <Box
+                    sx={{
+                        display: 'flex',
+                        justifyContent: 'center',
+                        alignItems: 'center',
+                        gap: 4,
+                        mt: 9,
+                        mb: 8,
+                    }}
+                >
+                    {shuffledTeams.map((team) => (
+                        <Box
+                            key={team}
+                            sx={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                width: 110,
+                                height: 110,
+                                background: 'white',
+                                borderRadius: 3,
+                                boxShadow: 3,
+                                border: '2px solid #eee',
+                                p: 1,
+                            }}
+                        >
+                            <img
+                                src={teamLogos[team]}
+                                alt={team}
+                                width={80}
+                                height={80}
+                                style={{ objectFit: 'contain' }}
+                            />
+                        </Box>
+                    ))}
+                </Box>
+                <Box mt={8}>
+                    <TextField
+                        value={guess}
+                        onChange={(e) => setGuess(e.target.value)}
+                        placeholder="Enter player name"
+                        variant="outlined"
+                        sx={{ backgroundColor: 'white', borderRadius: 1, width: '500px', fontFamily: 'Endzone' }}
+                        InputProps={{
+                            style: { fontFamily: 'Endzone' }
+                        }}
+                    />
+                </Box>
+                <Box mt={4}>
+                    <Button variant="contained" onClick={handleGuess} sx={{ fontFamily: 'Endzone', mr: 2 }}>
+                        Submit
+                    </Button>
+                    <Button 
+                        variant="outlined" 
+                        onClick={endGame} 
+                        sx={{ 
+                            fontFamily: 'Endzone', 
+                            color: 'white', 
+                            borderColor: 'white',
+                            '&:hover': {
+                                borderColor: 'lightgray',
+                                color: 'lightgray'
+                            }
                         }}
                     >
-                        <img
-                            src={teamLogos[team]}
-                            alt={team}
-                            width={80}
-                            height={80}
-                            style={{ objectFit: 'contain' }}
-                        />
-                    </Box>
-                ))}
-            </Box>
-            <Box mt={8}>
-                <TextField
-                    value={guess}
-                    onChange={(e) => setGuess(e.target.value)}
-                    placeholder="Enter player name"
-                    variant="outlined"
-                    sx={{ backgroundColor: 'white', borderRadius: 1, width: '500px', fontFamily: 'Endzone' }}
-                    InputProps={{
-                        style: { fontFamily: 'Endzone' }
-                    }}
-                />
-            </Box>
-            <Box mt={4}>
-                <Button variant="contained" onClick={handleGuess} sx={{ fontFamily: 'Endzone', mr: 2 }}>
-                    Submit
-                </Button>
-                <Button 
-                    variant="outlined" 
-                    onClick={endGame} 
-                    sx={{ 
-                        fontFamily: 'Endzone', 
-                        color: 'white', 
-                        borderColor: 'white',
-                        '&:hover': {
-                            borderColor: 'lightgray',
-                            color: 'lightgray'
-                        }
-                    }}
-                >
-                    Quit Game
-                </Button>
-            </Box>
-            <Box mt={2}>
-                <Typography sx={{ fontFamily: 'Endzone' }}>{feedback}</Typography>
-                {gameEndMessage && (
-                    <Typography sx={{ fontFamily: 'Endzone', color: '#90EE90', mt: 2 }}>
-                        {gameEndMessage}
-                    </Typography>
-                )}
-                {gameEnded && (
-                    <Box mt={3}>
-                        <Typography sx={{ fontFamily: 'Endzone', color: '#FFD700' }}>
-                            🏆 Game Complete! 🏆
+                        Quit Game
+                    </Button>
+                </Box>
+                <Box mt={2}>
+                    <Typography sx={{ fontFamily: 'Endzone' }}>{feedback}</Typography>
+                    {gameEndMessage && (
+                        <Typography sx={{ fontFamily: 'Endzone', color: '#90EE90', mt: 2 }}>
+                            {gameEndMessage}
                         </Typography>
-                        <Typography sx={{ fontFamily: 'Endzone', fontSize: '0.9rem', mt: 1 }}>
-                            Score: {correctCount} correct | Time: {Math.floor(durationInSeconds / 60)}:{(durationInSeconds % 60).toString().padStart(2, '0')}
-                        </Typography>
-                        <Button 
-                            onClick={() => window.location.reload()} 
-                            variant="contained"
-                            sx={{ 
-                                fontFamily: 'Endzone',
-                                mt: 2,
-                                backgroundColor: '#4CAF50',
-                                '&:hover': { backgroundColor: '#45a049' }
-                            }}
-                        >
-                            Play Again
-                        </Button>
-                    </Box>
-                )}
-                {feedback === '✅ Correct!' && !gameEnded && (
-                    <Box mt={4} display="flex" gap={2} justifyContent="center">
-                        <Button 
-                            onClick={nextPlayer} 
-                            variant="contained"
-                            sx={{ fontFamily: 'Endzone' }}
-                        >
-                            Next Player
-                        </Button>
-                        <Button 
-                            onClick={endGame} 
-                            variant="outlined"
-                            sx={{ 
-                                fontFamily: 'Endzone', 
-                                color: 'white', 
-                                borderColor: 'white',
-                                '&:hover': {
-                                    borderColor: 'lightgray',
-                                    color: 'lightgray'
-                                }
-                            }}
-                        >
-                            Finish Game
-                        </Button>
-                    </Box>
-                )}
-            </Box>
-            
-            <Box mt={4} display="flex" justifyContent="center" gap={2}>
-                <a
-                    href="https://www.facebook.com/sharer/sharer.php?u=https://yourgameurl.com"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    aria-label="Share on Facebook"
-                    onClick={() => setSharedOnSocial(true)}
-                >
-                    <img src="https://cdn.jsdelivr.net/npm/simple-icons@v11/icons/facebook.svg" alt="Facebook" width={32} height={32} style={{ filter: 'invert(1)' }} />
-                </a>
-                <a
-                    href="https://twitter.com/intent/tweet?url=https://yourgameurl.com&text=I%20just%20crushed%20the%20Journeyman%20game!%20Can%20you%20guess%20which%20NFL%20players%20were%20traded%20more%20than%20your%20ex%20changed%20their%20relationship%20status?%20🏈"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    aria-label="Share on Twitter"
-                    onClick={() => setSharedOnSocial(true)}
-                >
-                    <img src="https://cdn.jsdelivr.net/npm/simple-icons@v11/icons/x.svg" alt="Twitter/X" width={32} height={32} style={{ filter: 'invert(1)' }} />
-                </a>
-                <a
-                    href="https://www.reddit.com/submit?url=https://yourgameurl.com&title=This%20NFL%20Journeyman%20guessing%20game%20is%20harder%20than%20it%20looks"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    aria-label="Share on Reddit"
-                    onClick={() => setSharedOnSocial(true)}
-                >
-                    <img src="https://cdn.jsdelivr.net/npm/simple-icons@v11/icons/reddit.svg" alt="Reddit" width={32} height={32} style={{ filter: 'invert(1)' }} />
-                </a>
-                <a
-                    href="https://wa.me/?text=¡Prueba%20el%20juego%20Journeyman!%20¿Crees%20que%20conoces%20la%20historia%20de%20la%20NFL?%20Intenta%20este%20juego%20y%20mira%20si%20puedes%20adivinar%20qué%20jugadores%20cambiaron%20de%20equipo%20como%20si%20fuera%20una%20silla%20musical!%20🏈%20https://yourgameurl.com"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    aria-label="Share on WhatsApp"
-                    onClick={() => setSharedOnSocial(true)}
-                >
-                    <img src="https://cdn.jsdelivr.net/npm/simple-icons@v11/icons/whatsapp.svg" alt="WhatsApp" width={32} height={32} style={{ filter: 'invert(1)' }} />
-                </a>
-            </Box>
-        </Box>
-    );
+                    )}
+                    {gameEnded && (
+                        <Box mt={3}>
+                            <Typography sx={{ fontFamily: 'Endzone', color: '#FFD700' }}>
+                                🏆 Game Complete! 🏆
+                            </Typography>
+                            <Typography sx={{ fontFamily: 'Endzone', fontSize: '0.9rem', mt: 1 }}>
+                                Score: {correctCount} correct | Time: {Math.floor(durationInSeconds / 60)}:{(durationInSeconds % 60).toString().padStart(2, '0')}
+                            </Typography>
+                            <Button 
+                                onClick={() => window.location.reload()} 
+                                variant="contained"
+                                sx={{ 
+                                    fontFamily: 'Endzone',
+                                    mt: 2,
+                                    backgroundColor: '#4CAF50',
+                                    '&:hover': { backgroundColor: '#45a049' }
+                                }}
+                            >
+                                Play Again
+                            </Button>
+                        </Box>
+                    )}
+                    {feedback === '✅ Correct!' && !gameEnded && (
+                        <Box mt={4} display="flex" gap={2} justifyContent="center">
+                            <Button 
+                                onClick={nextPlayer} 
+                                variant="contained"
+                                sx={{ fontFamily: 'Endzone' }}
+                            >
+                                Next Player
+                            </Button>
+                            <Button 
+                                onClick={endGame} 
+                                variant="outlined"
+                                sx={{ 
+                                    fontFamily: 'Endzone', 
+                                    color: 'white', 
+                                    borderColor: 'white',
+                                    '&:hover': {
+                                        borderColor: 'lightgray',
+                                        color: 'lightgray'
+                                    }
+                                }}
+                            >
+                                Finish Game
+                            </Button>
+                        </Box>
+                    )}
+                </Box>
+                
+                <Box mt={4} display="flex" justifyContent="center" gap={2}>
+                    <a
+                        href="https://www.facebook.com/sharer/sharer.php?u=https://yourgameurl.com"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        aria-label="Share on Facebook"
+                        onClick={() => setSharedOnSocial(true)}
+                    >
+                        <img src="https://cdn.jsdelivr.net/npm/simple-icons@v11/icons/facebook.svg" alt="Facebook" width={32} height={32} style={{ filter: 'invert(1)' }} />
+                    </a>
+                    <a
+                        href="https://twitter.com/intent/tweet?url=https://yourgameurl.com&text=I%20just%20crushed%20the%20Journeyman%20game!%20Can%20you%20guess%20which%20NFL%20players%20were%20traded%20more%20than%20your%20ex%20changed%20their%20relationship%20status?%20🏈"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        aria-label="Share on Twitter"
+                        onClick={() => setSharedOnSocial(true)}
+                    >
+                        <img src="https://cdn.jsdelivr.net/npm/simple-icons@v11/icons/x.svg" alt="Twitter/X" width={32} height={32} style={{ filter: 'invert(1)' }} />
+                    </a>
+                    <a
+                        href="https://www.reddit.com/submit?url=https://yourgameurl.com&title=This%20NFL%20Journeyman%20guessing%20game%20is%20harder%20than%20it%20looks"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        aria-label="Share on Reddit"
+                        onClick={() => setSharedOnSocial(true)}
+                    >
+                        <img src="https://cdn.jsdelivr.net/npm/simple-icons@v11/icons/reddit.svg" alt="Reddit" width={32} height={32} style={{ filter: 'invert(1)' }} />
+                    </a>
+                    <a
+                        href="https://wa.me/?text=¡Prueba%20el%20juego%20Journeyman!%20¿Crees%20que%20conoces%20la%20historia%20de%20la%20NFL?%20Intenta%20este%20juego%20y%20mira%20si%20puedes%20adivinar%20qué%20jugadores%20cambiaron%20de%20equipo%20como%20si%20fuera%20una%20silla%20musical!%20🏈%20https://yourgameurl.com"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        aria-label="Share on WhatsApp"
+                        onClick={() => setSharedOnSocial(true)}
+                    >
+                        <img src="https://cdn.jsdelivr.net/npm/simple-icons@v11/icons/whatsapp.svg" alt="WhatsApp" width={32} height={32} style={{ filter: 'invert(1)' }} />
+                    </a>
+                </Box>
+            </div>
+        );
+    }
+
+    // Default return (should not reach here)
+    return null;
 }
