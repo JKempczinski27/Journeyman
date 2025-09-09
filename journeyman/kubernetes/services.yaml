@@ -1,0 +1,33 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: journeyman-backend-service
+  namespace: roster-recall
+  labels:
+    app: journeyman-backend
+spec:
+  selector:
+    app: journeyman-backend
+  ports:
+  - name: http
+    protocol: TCP
+    port: 3001
+    targetPort: 3001
+  type: ClusterIP
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: journeyman-dashboard-service
+  namespace: roster-recall
+  labels:
+    app: journeyman-dashboard
+spec:
+  selector:
+    app: journeyman-dashboard
+  ports:
+  - name: http
+    protocol: TCP
+    port: 3002
+    targetPort: 3002
+  type: LoadBalancer
