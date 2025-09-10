@@ -66,29 +66,75 @@ export default function App() {
     const [sharedOnSocial, setSharedOnSocial] = useState(false);
     const [gameEnded, setGameEnded] = useState(false);
     const [gameEndMessage, setGameEndMessage] = useState('');
+    const [sessionId, setSessionId] = useState('');
 
     const currentPlayer = playersData[currentIndex];
 
+    // Initialize Adobe Analytics on component mount
+    useEffect(() => {
+        initializeAnalytics(ADOBE_CONFIG.reportSuiteId, ADOBE_CONFIG.trackingServer);
+        
+        // Generate session ID
+        const newSessionId = `journeyman_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+        setSessionId(newSessionId);
+        
+        // Track initial page view
+        trackPageView('player-form', 'journeyman-game');
+        
+        // Set custom dimensions for the session
+        adobeAnalytics.setCustomDimensions({
+            gameVersion: '1.0.0',
+            platform: 'web',
+            sessionId: newSessionId,
+            userAgent: navigator.userAgent
+        });
+    }, []);
+
+    // Track page changes
+    useEffect(() => {
+        const pageNames = {
+            'playerForm': 'player-form',
+            'landing': 'game-selection',
+            'game': 'game-play'
+        };
+        
+        if (pageNames[page]) {
+            trackPageView(pageNames[page], 'journeyman-game');
+        }
+    }, [page]);
+
+    // Shuffle teams when player or mode changes
     useEffect(() => {
         if (challengeMode) {
             setShuffledTeams(shuffle(currentPlayer.teams));
         } else {
             setShuffledTeams(currentPlayer.teams);
         }
-        // eslint-disable-next-line
     }, [currentIndex, challengeMode]);
 
+    // Start game timer and track game start
     useEffect(() => {
         if (page === 'game') {
             setStartTime(Date.now());
+            
+            // Track game start
+            trackGameStart({
+                name: playerName,
+                email: playerEmail
+            }, challengeMode ? 'challenge' : 'easy');
         }
-    }, [page]);
+    }, [page, playerName, playerEmail, challengeMode]);
 
     const handleGuess = () => {
         const trimmedGuess = guess.trim();
         setGuesses(prev => [...prev, trimmedGuess]);
 
-        if (trimmedGuess.toLowerCase() === currentPlayer.name.toLowerCase()) {
+        const isCorrect = trimmedGuess.toLowerCase() === currentPlayer.name.toLowerCase();
+        
+        // Track the guess in Adobe Analytics
+        trackGuess(playerName, trimmedGuess, isCorrect, currentPlayer.name, challengeMode ? 'challenge' : 'easy');
+
+        if (isCorrect) {
             setFeedback('✅ Correct!');
             setCorrectCount(prev => prev + 1);
         } else {
@@ -97,6 +143,15 @@ export default function App() {
     };
 
     const nextPlayer = () => {
+        // Track next player event
+        adobeAnalytics.trackEvent('next_player', {
+            playerName: playerName,
+            currentPlayer: currentPlayer.name,
+            gameMode: challengeMode ? 'challenge' : 'easy',
+            correctGuesses: correctCount,
+            device: adobeAnalytics.getDeviceType()
+        });
+
         setFeedback('');
         setGuess('');
         setCurrentIndex((prev) => (prev + 1) % playersData.length);
@@ -119,6 +174,7 @@ export default function App() {
                 guesses,
                 correctCount,
                 sharedOnSocial,
+                sessionId,
                 gameSpecificData: {
                     currentPlayerIndex: currentIndex,
                     currentPlayerName: currentPlayer.name,
@@ -133,6 +189,17 @@ export default function App() {
             };
 
             console.log('🚀 Sending game data:', gameData);
+
+            // Track game completion in Adobe Analytics
+            trackGameComplete({
+                playerName: playerName,
+                playerEmail: playerEmail,
+                mode: challengeMode ? 'challenge' : 'easy',
+                correctCount: correctCount,
+                durationInSeconds: durationOverride ?? durationInSeconds,
+                guesses: guesses,
+                sharedOnSocial: sharedOnSocial
+            });
 
             const response = await fetch('https://journeyman-production.up.railway.app/save-player', {
                 method: 'POST',
@@ -151,6 +218,9 @@ export default function App() {
         } catch (err) {
             console.error('❌ Failed to send game data:', err);
             setGameEndMessage('❌ Failed to save game data, but thanks for playing!');
+            
+            // Track error in Adobe Analytics
+            adobeAnalytics.trackError('game_data_save_failed', err.message, 'game-complete');
         }
     };
 
@@ -178,15 +248,47 @@ export default function App() {
 
         setFormError('');
 
-        // Send name/email to backend - just validate, don't create player yet
+        // Track player registration in Adobe Analytics
+        trackPlayerRegistration({
+            name: playerName.trim(),
+            email: playerEmail.trim()
+        });
+
         try {
-            // Just proceed to landing page - player will be created when game data is sent
             setPage('landing');
         } catch (error) {
             console.error('Error:', error);
             setFormError('Connection error. Please try again later.');
+            
+            // Track error in Adobe Analytics
+            adobeAnalytics.trackError('form_submission_failed', error.message, 'player-form');
             return;
         }
+    };
+
+    const handleModeSelection = (mode) => {
+        const isChallenge = mode === 'challenge';
+        setChallengeMode(isChallenge);
+        
+        // Track mode selection in Adobe Analytics
+        trackModeSelection(playerName, isChallenge ? 'challenge' : 'easy');
+        
+        setPage('game');
+    };
+
+    const handleSocialShare = (platform) => {
+        setSharedOnSocial(true);
+        
+        // Track social share in Adobe Analytics
+        trackSocialShare(platform, playerName, challengeMode ? 'challenge' : 'easy');
+    };
+
+    const handleQuitGame = () => {
+        // Track game quit in Adobe Analytics
+        trackGameQuit(playerName, challengeMode ? 'challenge' : 'easy', 'user_initiated');
+        
+        // End game with quit reason
+        endGame();
     };
 
     // Player info form page
@@ -298,7 +400,7 @@ export default function App() {
                     </Typography>
                     <Typography variant="body2" sx={{ ml: 2, fontSize: '0.750rem' }}>
                         🟢 <b>Easy Mode:</b><br />
-                        You get the logos in order of when they played there. It’s like using bumpers at a bowling alley—no shame.
+                        You get the logos in order of when they played there. It's like using bumpers at a bowling alley—no shame.
                     </Typography>
                     <Typography variant="body2" sx={{ ml: 2, mt: 2, fontSize: '0.750rem' }}>
                         🔴 <b>Challenge Mode:</b><br />
@@ -310,10 +412,10 @@ export default function App() {
                     </Typography>
                     <Typography variant="body2" sx={{ ml: 2, fontSize: '0.750rem' }}>
                         • Guess the player based on their team history.<br />
-                        • No Googling. Pretend it’s 2004 and you’re using pure memory.<br />
-                        • Spelling matters. “Ochocinco” = ✅, “Ochochoco” = 🍫🚫<br />
-                        • Limited guesses. Don’t just shotgun “McCown” every time (even if odds are decent).<br />
-                        • <i>Tip:</i> If you see 6 logos and none of them are the Patriots, it’s probably not Tom Brady.
+                        • No Googling. Pretend it's 2004 and you're using pure memory.<br />
+                        • Spelling matters. "Ochocinco" = ✅, "Ochochoco" = 🍫🚫<br />
+                        • Limited guesses. Don't just shotgun "McCown" every time (even if odds are decent).<br />
+                        • <i>Tip:</i> If you see 6 logos and none of them are the Patriots, it's probably not Tom Brady.
                     </Typography>
                 </Box>
                 <Typography variant="h5" sx={{ fontFamily:'Endzone' }} gutterBottom>
@@ -324,10 +426,7 @@ export default function App() {
                         data-cy="easy-mode"
                         variant="contained"
                         size="large"
-                        onClick={() => {
-                            setChallengeMode(false);
-                            setPage('game');
-                        }}
+                        onClick={() => handleModeSelection('easy')}
                         sx={{
                             backgroundColor: '#0B6623',
                             '&:hover': {
@@ -341,10 +440,7 @@ export default function App() {
                         data-cy="challenge-mode"
                         variant="contained"
                         size="large"
-                        onClick={() => {
-                            setChallengeMode(true);
-                            setPage('game');
-                        }}
+                        onClick={() => handleModeSelection('challenge')}
                         sx={{
                             backgroundColor: '#D30000',
                             '&:hover': {
@@ -361,8 +457,6 @@ export default function App() {
 
     // Game page
     if (page === 'game') {
-        const player = playersData[currentIndex];
-        const team = player.teams[0];
         return (
             <div>
                 <Typography
@@ -375,10 +469,9 @@ export default function App() {
                     Who Am I?
                 </Typography>
 
-                {/* add alt here for the player portrait */}
                 <img
-                    src={player.image}
-                    alt={`Portrait of ${player.name}`}
+                    src={currentPlayer.image}
+                    alt={`Portrait of ${currentPlayer.name}`}
                     height="160"
                     style={{
                         borderRadius: '50%',
