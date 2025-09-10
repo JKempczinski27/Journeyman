@@ -25,6 +25,40 @@
       Learn how to configure a non-root public URL by running `npm run build`.
     -->
     <title>React App</title>
+
+    <!-- Adobe Analytics Configuration -->
+    <script>
+      // Set global configuration before loading Adobe Analytics
+      window.ADOBE_RSID = '%REACT_APP_ADOBE_REPORT_SUITE_ID%';
+      window.ADOBE_TRACKING_SERVER = '%REACT_APP_ADOBE_TRACKING_SERVER%';
+      
+      // Initialize data layer for Adobe Analytics
+      window.digitalData = {
+        page: {
+          pageInfo: {
+            pageName: '',
+            channel: 'journeyman-game',
+            language: 'en-US',
+            geoRegion: ''
+          }
+        },
+        user: {
+          profile: {
+            attributes: {
+              gameType: 'journeyman'
+            }
+          }
+        }
+      };
+    </script>
+
+    <!-- Load Adobe Analytics -->
+    <script src="%PUBLIC_URL%/adobe-analytics-loader.js"></script>
+
+    <!-- Optional: Add Adobe Launch/Tags script instead of custom loader -->
+    <!--
+    <script src="https://assets.adobedtm.com/your-property-id/your-environment.min.js" async></script>
+    -->
   </head>
   <body>
     <noscript>You need to enable JavaScript to run this app.</noscript>

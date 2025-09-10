@@ -1,7 +1,28 @@
 // src/JourneymanGame.jsx
 import React, { Suspense, lazy, useState, useEffect } from 'react';
+import { 
+  Box, 
+  Typography, 
+  TextField, 
+  Button, 
+  Stack 
+} from '@mui/material';
+
+// Your existing imports
 import teamLogos from './TeamLogos.js';
-import './App.css'; // Assuming you have some basic styles in App.css
+import './App.css';
+import adobeAnalytics, { 
+  initializeAnalytics, 
+  trackPageView, 
+  trackGameStart, 
+  trackGameComplete,
+  trackGuess,
+  trackModeSelection,
+  trackSocialShare,
+  trackPlayerRegistration,
+  trackGameQuit
+} from './utils/adobeAnalytics';
+import ADOBE_CONFIG from './config/adobeConfig';
 
 const PlayerForm   = lazy(() => import('./components/PlayerForm'));
 const LandingPage  = lazy(() => import('./components/LandingPage'));
@@ -636,20 +657,10 @@ export default function App() {
                     >
                         <img src="https://cdn.jsdelivr.net/npm/simple-icons@v11/icons/reddit.svg" alt="Reddit" width={32} height={32} style={{ filter: 'invert(1)' }} />
                     </a>
-                    <a
-                        href="https://wa.me/?text=¡Prueba%20el%20juego%20Journeyman!%20¿Crees%20que%20conoces%20la%20historia%20de%20la%20NFL?%20Intenta%20este%20juego%20y%20mira%20si%20puedes%20adivinar%20qué%20jugadores%20cambiaron%20de%20equipo%20como%20si%20fuera%20una%20silla%20musical!%20🏈%20https://yourgameurl.com"
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        aria-label="Share on WhatsApp"
-                        onClick={() => setSharedOnSocial(true)}
-                    >
-                        <img src="https://cdn.jsdelivr.net/npm/simple-icons@v11/icons/whatsapp.svg" alt="WhatsApp" width={32} height={32} style={{ filter: 'invert(1)' }} />
-                    </a>
                 </Box>
             </div>
         );
     }
 
-    // Default return (should not reach here)
     return null;
 }
