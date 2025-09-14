@@ -1,0 +1,152 @@
+repos:
+  # Basic file checks
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.5.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+        args: ['--multi']
+      - id: check-json
+        exclude: ^node_modules/
+      - id: check-merge-conflict
+      - id: check-added-large-files
+        args: ['--maxkb=500']
+      - id: mixed-line-ending
+        args: ['--fix=lf']
+
+  # Detect secrets
+  - repo: https://github.com/Yelp/detect-secrets
+    rev: v1.4.0
+    hooks:
+      - id: detect-secrets
+        args: ['--baseline', '.secrets.baseline']
+        exclude: |
+          (?x)^(
+            .*\.lock$|
+            package-lock\.json$|
+            .*\.min\.js$|
+            .*\.map$
+          )$
+
+  # Security scanning with Semgrep
+  - repo: https://github.com/returntocorp/semgrep
+    rev: 'v1.45.0'
+    hooks:
+      - id: semgrep
+        args:
+          - '--config=auto'
+          - '--error'
+          - '--skip-unknown-extensions'
+          - '--exclude=node_modules'
+          - '--exclude=build'
+          - '--exclude=*.min.js'
+        files: .(js|jsx|ts|tsx)$
+
+  # ESLint for JavaScript with security plugins
+  - repo: https://github.com/pre-commit/mirrors-eslint
+    rev: 'v8.56.0'
+    hooks:
+      - id: eslint
+        files: \.(js|jsx|ts|tsx)$
+        types: [file]
+        additional_dependencies:
+          - eslint@8.56.0
+          - eslint-plugin-security@1.7.1
+          - eslint-plugin-react@7.33.2
+
+  # Python formatting (for any Python scripts)
+  - repo: https://github.com/psf/black
+    rev: 23.3.0
+    hooks:
+      - id: black
+        files: \.py$
+
+  # Docker linting
+  - repo: https://github.com/hadolint/hadolint
+    rev: v2.12.0
+    hooks:
+      - id: hadolint-docker
+        args: ['--ignore', 'DL3008', '--ignore', 'DL3009']
+
+  # Local custom hooks
+  - repo: local
+    hooks:
+      - id: npm-audit-frontend
+        name: npm security audit (Frontend)
+        entry: bash
+        args: ['-c', 'npm audit --audit-level high']
+        language: system
+        files: package\.json$
+        pass_filenames: false
+
+      - id: npm-audit-backend
+        name: npm security audit (Backend)
+        entry: bash
+        args: ['-c', 'cd backend && npm audit --audit-level high']
+        language: system
+        files: backend/package\.json$
+        pass_filenames: false
+
+      - id: prettier
+        name: Prettier
+        entry: npx prettier --write
+        language: node
+        files: \.(js|jsx|ts|tsx|json|css|scss|md|yaml|yml)$
+        exclude: |
+          (?x)^(
+            node_modules/|
+            build/|
+            dist/|
+            .*\.min\.js$|
+            package-lock\.json$
+          )$
+
+      - id: check-hardcoded-secrets
+        name: Check for hardcoded secrets
+        entry: bash
+        args: ['-c', 'if grep -r "api.*key\|secret\|password\|token" --include="*.js" --include="*.jsx" --include="*.ts" --include="*.tsx" --exclude-dir=node_modules . | grep -v "placeholder\|example\|test\|mock"; then echo "❌ Potential hardcoded secrets found!"; exit 1; fi']
+        language: system
+        pass_filenames: false
+
+      - id: check-debug-code
+        name: Check for debug code
+        entry: bash
+        args: ['-c', 'if grep -r "console\.log\|debugger" --include="*.js" --include="*.jsx" --include="*.ts" --include="*.tsx" --exclude-dir=node_modules . | grep -v "// OK:" | head -5; then echo "❌ Debug code found! Remove console.log and debugger statements"; exit 1; fi']
+        language: system
+        pass_filenames: false
+
+      - id: security-headers-check
+        name: Security Headers Validation
+        entry: bash
+        args: ['-c', 'grep -r "res\.setHeader.*X-Frame-Options\|res\.setHeader.*X-Content-Type-Options\|res\.setHeader.*Content-Security-Policy" backend/ > /dev/null || { echo "❌ Missing security headers in backend code"; exit 1; }']
+        language: system
+        pass_filenames: false
+        files: 'backend/.*\.js$'
+
+      - id: env-file-check
+        name: Environment File Security Check
+        entry: bash
+        args: ['-c', 'if [ -f .env ] && grep -E "(password|secret|key).*=" .env | grep -v "placeholder\|example"; then echo "❌ Potential secrets in .env file"; exit 1; fi']
+        language: system
+        pass_filenames: false
+        always_run: true
+
+      - id: validate-env-example
+        name: Validate .env.example exists
+        entry: bash
+        args: ['-c', 'if [ ! -f .env.example ]; then echo "❌ .env.example file is required"; exit 1; fi']
+        language: system
+        pass_filenames: false
+
+      - id: bundle-size-check
+        name: Bundle Size Check
+        entry: bash
+        args: ['-c', 'if [ -d build/static/js ]; then find build/static/js -name "*.js" -size +2M -exec echo "❌ Large bundle detected: {}" \; -exec exit 1 \;; fi']
+        language: system
+        pass_filenames: false
+        stages: [pre-push]
+
+# Pre-commit configuration
+default_stages: [pre-commit]
+fail_fast: true

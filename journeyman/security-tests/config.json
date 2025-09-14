@@ -1,0 +1,29 @@
+{
+  "targets": [
+    {
+      "name": "Local Development",
+      "url": "http://localhost:3001",
+      "enabled": true
+    },
+    {
+      "name": "Production",
+      "url": "https://journeyman-production.up.railway.app",
+      "enabled": false
+    }
+  ],
+  "options": {
+    "timeout": 15000,
+    "verbose": true,
+    "maxRetries": 3,
+    "outputDir": "./reports"
+  },
+  "testSuites": {
+    "full": ["access-control", "cryptographic", "injection", "design"],
+    "quick": ["access-control", "injection"],
+    "minimal": ["injection"]
+  },
+  "notifications": {
+    "webhookUrl": null,
+    "email": null
+  }
+}

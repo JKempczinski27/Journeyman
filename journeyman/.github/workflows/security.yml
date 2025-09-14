@@ -1,0 +1,271 @@
+name: Security Scan
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+  schedule:
+    - cron: '0 2 * * 1'  # Weekly security scan on Mondays at 2 AM
+
+jobs:
+  security:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Full history for better analysis
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: |
+          npm ci
+          cd backend && npm ci
+
+      - name: Run npm audit (Frontend)
+        run: |
+          echo "🔍 Running npm audit for frontend..."
+          npm audit --audit-level moderate --production || exit 1
+
+      - name: Run npm audit (Backend)
+        run: |
+          echo "🔍 Running npm audit for backend..."
+          cd backend && npm audit --audit-level moderate --production || exit 1
+
+      - name: Run Semgrep SAST
+        uses: returntocorp/semgrep-action@v1
+        with:
+          config: >-
+            p/security-audit
+            p/secrets
+            p/owasp-top-ten
+            p/javascript
+            p/typescript
+            p/react
+            p/nodejs
+        env:
+          SEMGREP_APP_TOKEN: ${{ secrets.SEMGREP_APP_TOKEN }}
+
+      - name: Run CodeQL Analysis
+        uses: github/codeql-action/init@v2
+        with:
+          languages: javascript
+          queries: security-extended
+
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v2
+
+      - name: Run Snyk Security Test
+        uses: snyk/actions/node@master
+        continue-on-error: true
+        env:
+          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+        with:
+          args: --severity-threshold=medium --all-projects
+
+      - name: Upload Snyk results to GitHub Code Scanning
+        uses: github/codeql-action/upload-sarif@v2
+        if: always()
+        with:
+          sarif_file: snyk.sarif
+
+      - name: Start application for DAST testing
+        run: |
+          echo "🚀 Starting application for security testing..."
+          # Start backend
+          cd backend
+          npm start &
+          BACKEND_PID=$!
+          echo $BACKEND_PID > ../backend.pid
+
+          # Start frontend
+          cd ..
+          npm start &
+          FRONTEND_PID=$!
+          echo $FRONTEND_PID > frontend.pid
+
+          # Wait for services to be ready
+          echo "⏳ Waiting for services to start..."
+          sleep 30
+
+          # Health check
+          curl -f http://localhost:3001/health || exit 1
+          curl -f http://localhost:3000 || exit 1
+
+      - name: OWASP ZAP Baseline Scan
+        uses: zaproxy/action-baseline@v0.10.0
+        with:
+          target: 'http://localhost:3000'
+          rules_file_name: '.zap/rules.tsv'
+          cmd_options: '-a -d -T 60 -m 10'
+
+      - name: OWASP ZAP API Scan
+        uses: zaproxy/action-api-scan@v0.5.0
+        with:
+          target: 'http://localhost:3001'
+          format: openapi
+          api_file: 'docs/api-spec.json'
+          cmd_options: '-a -d -T 60'
+
+      - name: Security Headers Check
+        run: |
+          echo "🔒 Checking security headers..."
+
+          # Check security headers on main endpoints
+          ENDPOINTS=("http://localhost:3000" "http://localhost:3001/health" "http://localhost:3001/analytics")
+
+          for endpoint in "${ENDPOINTS[@]}"; do
+            echo "Checking headers for: $endpoint"
+
+            # Check for security headers
+            curl -sI "$endpoint" | grep -i "x-frame-options" || echo "❌ Missing X-Frame-Options header for $endpoint"
+            curl -sI "$endpoint" | grep -i "x-content-type-options" || echo "❌ Missing X-Content-Type-Options header for $endpoint"
+            curl -sI "$endpoint" | grep -i "x-xss-protection" || echo "❌ Missing X-XSS-Protection header for $endpoint"
+            curl -sI "$endpoint" | grep -i "content-security-policy" || echo "❌ Missing CSP header for $endpoint"
+            curl -sI "$endpoint" | grep -i "referrer-policy" || echo "❌ Missing Referrer-Policy header for $endpoint"
+          done
+
+      - name: Check for secrets in code
+        run: |
+          echo "🔍 Scanning for potential secrets..."
+
+          # Check for common secret patterns
+          if grep -r -i "password.*=" --include="*.js" --include="*.json" --exclude-dir=node_modules . | grep -v "placeholder\|example\|test\|mock"; then
+            echo "❌ Potential hardcoded passwords found"
+            exit 1
+          fi
+
+          if grep -r -i "api.*key.*=" --include="*.js" --include="*.json" --exclude-dir=node_modules . | grep -v "placeholder\|example\|test\|mock"; then
+            echo "❌ Potential hardcoded API keys found"
+            exit 1
+          fi
+
+          if grep -r -i "secret.*=" --include="*.js" --include="*.json" --exclude-dir=node_modules . | grep -v "placeholder\|example\|test\|mock"; then
+            echo "❌ Potential hardcoded secrets found"
+            exit 1
+          fi
+
+          echo "✅ No hardcoded secrets detected"
+
+      - name: Dependency License Check
+        run: |
+          echo "📄 Checking dependency licenses..."
+          npx license-checker --summary --excludePrivatePackages --failOn 'GPL'
+          cd backend && npx license-checker --summary --excludePrivatePackages --failOn 'GPL'
+
+      - name: Docker Security Scan (if Dockerfile exists)
+        if: hashFiles('**/Dockerfile') != ''
+        run: |
+          echo "🐳 Running Docker security scan..."
+
+          # Install Trivy
+          sudo apt-get update
+          sudo apt-get install wget apt-transport-https gnupg lsb-release
+          wget -qO - https://aquasecurity.github.io/trivy-repo/deb/public.key | sudo apt-key add -
+          echo "deb https://aquasecurity.github.io/trivy-repo/deb $(lsb_release -sc) main" | sudo tee -a /etc/apt/sources.list.d/trivy.list
+          sudo apt-get update
+          sudo apt-get install trivy
+
+          # Build and scan Docker image
+          docker build -t journeyman-security-test .
+          trivy image --severity HIGH,CRITICAL journeyman-security-test
+
+      - name: Generate Security Report
+        if: always()
+        run: |
+          echo "📊 Generating security report..."
+
+          cat > security-report.md << 'EOF'
+          # Security Scan Report
+
+          ## Summary
+          - **Date**: $(date -u)
+          - **Commit**: ${{ github.sha }}
+          - **Branch**: ${{ github.ref }}
+
+          ## Scans Performed
+          - ✅ npm audit (Frontend & Backend)
+          - ✅ Semgrep SAST
+          - ✅ CodeQL Analysis
+          - ✅ Snyk Vulnerability Scan
+          - ✅ OWASP ZAP Baseline Scan
+          - ✅ OWASP ZAP API Scan
+          - ✅ Security Headers Check
+          - ✅ Secrets Detection
+          - ✅ License Compliance Check
+
+          ## Results
+          Check the GitHub Actions logs for detailed results of each security scan.
+
+          ## Recommendations
+          - Regularly update dependencies
+          - Monitor security advisories
+          - Review and update CSP policies
+          - Implement additional security headers as needed
+          EOF
+
+      - name: Cleanup
+        if: always()
+        run: |
+          echo "🧹 Cleaning up test processes..."
+
+          # Kill test processes
+          if [ -f backend.pid ]; then
+            kill $(cat backend.pid) 2>/dev/null || true
+            rm backend.pid
+          fi
+
+          if [ -f frontend.pid ]; then
+            kill $(cat frontend.pid) 2>/dev/null || true
+            rm frontend.pid
+          fi
+
+          # Kill any remaining node processes
+          pkill -f "node.*journeyman" 2>/dev/null || true
+
+      - name: Upload Security Report
+        uses: actions/upload-artifact@v3
+        if: always()
+        with:
+          name: security-report
+          path: |
+            security-report.md
+            *.sarif
+            zap-*.html
+            zap-*.json
+          retention-days: 30
+
+      - name: Comment PR with Security Status
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v6
+        with:
+          script: |
+            const fs = require('fs');
+
+            let comment = `## 🔒 Security Scan Results
+
+            The security scan has completed for this PR.
+
+            **Scans performed:**
+            - npm audit ✅
+            - SAST (Semgrep) ✅
+            - CodeQL Analysis ✅
+            - Vulnerability Scan (Snyk) ✅
+            - DAST (OWASP ZAP) ✅
+            - Security Headers Check ✅
+            - Secrets Detection ✅
+
+            Please review the detailed results in the Actions tab.`;
+
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: comment
+            });

@@ -1,20 +1,21 @@
 // src/JourneymanGame.jsx
 import React, { Suspense, lazy, useState, useEffect } from 'react';
-import { 
-  Box, 
-  Typography, 
-  TextField, 
-  Button, 
-  Stack 
+import {
+  Box,
+  Typography,
+  TextField,
+  Button,
+  Stack,
+  CircularProgress
 } from '@mui/material';
 
 // Your existing imports
 import teamLogos from './TeamLogos.js';
 import './App.css';
-import adobeAnalytics, { 
-  initializeAnalytics, 
-  trackPageView, 
-  trackGameStart, 
+import adobeAnalytics, {
+  initializeAnalytics,
+  trackPageView,
+  trackGameStart,
   trackGameComplete,
   trackGuess,
   trackModeSelection,
@@ -23,6 +24,7 @@ import adobeAnalytics, {
   trackGameQuit
 } from './utils/adobeAnalytics';
 import ADOBE_CONFIG from './config/adobeConfig';
+import dataUploadService, { uploadGameData, getS3Status } from './utils/dataUploadService';
 
 const PlayerForm   = lazy(() => import('./components/PlayerForm'));
 const LandingPage  = lazy(() => import('./components/LandingPage'));
@@ -88,20 +90,22 @@ export default function App() {
     const [gameEnded, setGameEnded] = useState(false);
     const [gameEndMessage, setGameEndMessage] = useState('');
     const [sessionId, setSessionId] = useState('');
+    const [uploadStatus, setUploadStatus] = useState('idle'); // 'idle', 'uploading', 'success', 'error'
+    const [s3Status, setS3Status] = useState(null);
 
     const currentPlayer = playersData[currentIndex];
 
     // Initialize Adobe Analytics on component mount
     useEffect(() => {
         initializeAnalytics(ADOBE_CONFIG.reportSuiteId, ADOBE_CONFIG.trackingServer);
-        
+
         // Generate session ID
         const newSessionId = `journeyman_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
         setSessionId(newSessionId);
-        
+
         // Track initial page view
         trackPageView('player-form', 'journeyman-game');
-        
+
         // Set custom dimensions for the session
         adobeAnalytics.setCustomDimensions({
             gameVersion: '1.0.0',
@@ -118,7 +122,7 @@ export default function App() {
             'landing': 'game-selection',
             'game': 'game-play'
         };
-        
+
         if (pageNames[page]) {
             trackPageView(pageNames[page], 'journeyman-game');
         }
@@ -137,7 +141,7 @@ export default function App() {
     useEffect(() => {
         if (page === 'game') {
             setStartTime(Date.now());
-            
+
             // Track game start
             trackGameStart({
                 name: playerName,
@@ -146,12 +150,26 @@ export default function App() {
         }
     }, [page, playerName, playerEmail, challengeMode]);
 
+    // Check S3 status on component mount
+    useEffect(() => {
+        const checkS3Status = async () => {
+            try {
+                const status = await getS3Status();
+                setS3Status(status);
+                console.log('📊 S3 Status:', status);
+            } catch (error) {
+                console.error('Failed to get S3 status:', error);
+            }
+        };
+        checkS3Status();
+    }, []);
+
     const handleGuess = () => {
         const trimmedGuess = guess.trim();
         setGuesses(prev => [...prev, trimmedGuess]);
 
         const isCorrect = trimmedGuess.toLowerCase() === currentPlayer.name.toLowerCase();
-        
+
         // Track the guess in Adobe Analytics
         trackGuess(playerName, trimmedGuess, isCorrect, currentPlayer.name, challengeMode ? 'challenge' : 'easy');
 
@@ -178,18 +196,22 @@ export default function App() {
         setCurrentIndex((prev) => (prev + 1) % playersData.length);
     };
 
+    // Enhanced sendGameData function with S3 pipeline
     const sendGameData = async (durationOverride) => {
-        console.log('🎯 sendGameData called with:', {
+        console.log('🎯 sendGameData called with S3 pipeline:', {
             mode: challengeMode ? 'challenge' : 'easy',
             durationOverride,
             guesses,
             correctCount
         });
-        
+
+        setUploadStatus('uploading');
+
         try {
             const gameData = {
                 name: playerName,
                 email: playerEmail,
+                gameType: 'journeyman',
                 mode: challengeMode ? 'challenge' : 'easy',
                 durationInSeconds: durationOverride ?? durationInSeconds,
                 guesses,
@@ -201,115 +223,189 @@ export default function App() {
                     currentPlayerName: currentPlayer.name,
                     totalPlayers: playersData.length,
                     challengeMode,
+                    playersAttempted: [currentPlayer.name],
                     guessDetails: guesses.map((guess, index) => ({
                         guess,
                         correct: guess.toLowerCase() === currentPlayer.name.toLowerCase(),
-                        timestamp: new Date().toISOString()
-                    }))
+                        timestamp: new Date().toISOString(),
+                        playerAttempted: currentPlayer.name
+                    })),
+                    gameFlow: {
+                        startedAt: new Date(startTime).toISOString(),
+                        endedAt: new Date().toISOString(),
+                        timeToFirstGuess: guesses.length > 0 ? Math.floor((Date.now() - startTime) / 1000 / guesses.length) : null
+                    }
+                },
+                analyticsData: {
+                    accuracyRate: correctCount / Math.max(guesses.length, 1),
+                    averageGuessTime: (durationOverride ?? durationInSeconds) / Math.max(guesses.length, 1),
+                    gameCompletionStatus: correctCount > 0 ? 'completed' : 'abandoned',
+                    difficulty: challengeMode ? 'hard' : 'easy',
+                    playerEngagement: {
+                        socialShare: sharedOnSocial,
+                        sessionDuration: durationOverride ?? durationInSeconds,
+                        guessPattern: guesses.length > 0 ? 'active' : 'passive'
+                    }
                 }
             };
 
-            console.log('🚀 Sending game data:', gameData);
+            console.log('🚀 Sending enhanced game data to S3 pipeline:', gameData);
 
-            // Track game completion in Adobe Analytics
-            trackGameComplete({
-                playerName: playerName,
-                playerEmail: playerEmail,
-                mode: challengeMode ? 'challenge' : 'easy',
-                correctCount: correctCount,
-                durationInSeconds: durationOverride ?? durationInSeconds,
-                guesses: guesses,
-                sharedOnSocial: sharedOnSocial
-            });
-
-            const response = await fetch('https://journeyman-production.up.railway.app/save-player', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(gameData),
-            });
-
-            const result = await response.json();
-            console.log('✅ Game data response:', result);
-            
-            if (result.success) {
-                setGameEndMessage('🎮 Game data saved successfully! Thanks for playing!');
-            } else {
-                setGameEndMessage('⚠️ Game saved, but there was an issue with the data.');
+            // Track game completion in Adobe Analytics (if enabled)
+            if (ADOBE_CONFIG.enabled) {
+                trackGameComplete({
+                    playerName: playerName,
+                    playerEmail: playerEmail,
+                    mode: challengeMode ? 'challenge' : 'easy',
+                    correctCount: correctCount,
+                    durationInSeconds: durationOverride ?? durationInSeconds,
+                    guesses: guesses,
+                    sharedOnSocial: sharedOnSocial
+                });
             }
+
+            // Upload to S3 pipeline via enhanced service
+            const result = await uploadGameData(gameData);
+
+            console.log('✅ S3 pipeline upload successful:', result);
+
+            setUploadStatus('success');
+            setGameEndMessage('🎮 Game data saved to analytics pipeline! Thanks for playing!');
+
+            return result;
         } catch (err) {
-            console.error('❌ Failed to send game data:', err);
-            setGameEndMessage('❌ Failed to save game data, but thanks for playing!');
-            
+            console.error('❌ Failed to send game data to S3 pipeline:', err);
+            setUploadStatus('error');
+            setGameEndMessage('⚠️ Game data saved locally, will retry upload automatically.');
+
             // Track error in Adobe Analytics
-            adobeAnalytics.trackError('game_data_save_failed', err.message, 'game-complete');
+            if (ADOBE_CONFIG.enabled) {
+                adobeAnalytics.trackError('s3_pipeline_upload_failed', err.message, 'game-complete');
+            }
+
+            // The dataUploadService will automatically queue failed uploads for retry
+            throw err;
         }
     };
 
-    const endGame = async () => {
-        const endTime = Date.now();
-        const duration = Math.floor((endTime - startTime) / 1000);
-        setDurationInSeconds(duration);
-        setGameEnded(true);
-        setFeedback('🎯 Finishing game...');
-        await sendGameData(duration);
-    };
-
-    const handleFormSubmit = async (e) => {
-        e.preventDefault();
-
-        if (!playerName.trim() || !playerEmail.trim()) {
-            setFormError('Please enter both name and email.');
-            return;
-        }
-
-        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(playerEmail)) {
-            setFormError('Please enter a valid email address.');
-            return;
-        }
-
-        setFormError('');
-
-        // Track player registration in Adobe Analytics
-        trackPlayerRegistration({
-            name: playerName.trim(),
-            email: playerEmail.trim()
-        });
-
+    // Add a function to retry failed uploads
+    const retryFailedUploads = async () => {
         try {
-            setPage('landing');
+            setUploadStatus('uploading');
+            const result = await dataUploadService.retryFailedUploads();
+
+            if (result.successful > 0) {
+                setGameEndMessage(`✅ Successfully uploaded ${result.successful} queued game sessions!`);
+                setUploadStatus('success');
+            } else {
+                setGameEndMessage('ℹ️ No failed uploads to retry.');
+                setUploadStatus('idle');
+            }
+
+            console.log('🔄 Retry results:', result);
         } catch (error) {
-            console.error('Error:', error);
-            setFormError('Connection error. Please try again later.');
-            
-            // Track error in Adobe Analytics
-            adobeAnalytics.trackError('form_submission_failed', error.message, 'player-form');
-            return;
+            console.error('❌ Failed to retry uploads:', error);
+            setUploadStatus('error');
+            setGameEndMessage('❌ Failed to retry uploads. Will try again later.');
         }
     };
 
-    const handleModeSelection = (mode) => {
-        const isChallenge = mode === 'challenge';
-        setChallengeMode(isChallenge);
-        
-        // Track mode selection in Adobe Analytics
-        trackModeSelection(playerName, isChallenge ? 'challenge' : 'easy');
-        
-        setPage('game');
+    // Add upload status indicator to your game UI
+    const renderUploadStatus = () => {
+        const queueStatus = dataUploadService.getQueueStatus?.() || { isProcessing: false, failedUploadsCount: 0, queueLength: 0 };
+
+        if (uploadStatus === 'uploading' || queueStatus.isProcessing) {
+            return (
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mt: 2 }}>
+                    <CircularProgress size={16} />
+                    <Typography variant="caption" sx={{ color: '#90EE90' }}>
+                        Uploading to analytics pipeline...
+                    </Typography>
+                </Box>
+            );
+        }
+
+        if (queueStatus.failedUploadsCount > 0) {
+            return (
+                <Box sx={{ mt: 2 }}>
+                    <Typography variant="caption" sx={{ color: '#FFA500' }}>
+                        {queueStatus.failedUploadsCount} uploads pending retry
+                    </Typography>
+                    <Button
+                        size="small"
+                        onClick={retryFailedUploads}
+                        sx={{ ml: 1, fontSize: '0.7rem' }}
+                    >
+                        Retry Now
+                    </Button>
+                </Box>
+            );
+        }
+
+        if (uploadStatus === 'success') {
+            return (
+                <Typography variant="caption" sx={{ color: '#90EE90', mt: 2, display: 'block' }}>
+                    ✅ Data uploaded to analytics pipeline
+                </Typography>
+            );
+        }
+
+        return null;
     };
 
-    const handleSocialShare = (platform) => {
-        setSharedOnSocial(true);
-        
-        // Track social share in Adobe Analytics
-        trackSocialShare(platform, playerName, challengeMode ? 'challenge' : 'easy');
+    // Add S3 status indicator to your dashboard
+    const renderS3Status = () => {
+        if (!s3Status) return null;
+
+        return (
+            <Box sx={{ position: 'fixed', bottom: 16, right: 16, zIndex: 1000 }}>
+                <Typography
+                    variant="caption"
+                    sx={{
+                        color: s3Status.s3Status === 'connected' ? '#90EE90' : '#FF6B6B',
+                        backgroundColor: 'rgba(0,0,0,0.7)',
+                        padding: '4px 8px',
+                        borderRadius: '4px'
+                    }}
+                >
+                    S3: {s3Status.s3Status} | Files: {s3Status.totalFiles}
+                </Typography>
+            </Box>
+        );
     };
 
-    const handleQuitGame = () => {
-        // Track game quit in Adobe Analytics
-        trackGameQuit(playerName, challengeMode ? 'challenge' : 'easy', 'user_initiated');
-        
-        // End game with quit reason
-        endGame();
+    // Debug panel for development
+    const renderDebugPanel = () => {
+        if (process.env.NODE_ENV !== 'development') return null;
+
+        const queueStatus = dataUploadService.getQueueStatus?.() || { queueLength: 0, failedUploadsCount: 0 };
+
+        return (
+            <Box sx={{
+                position: 'fixed',
+                top: 16,
+                left: 16,
+                backgroundColor: 'rgba(0,0,0,0.8)',
+                color: 'white',
+                padding: 2,
+                borderRadius: 1,
+                fontSize: '0.8rem',
+                zIndex: 1000
+            }}>
+                <Typography variant="h6" sx={{ fontSize: '1rem', mb: 1 }}>Debug Panel</Typography>
+                <Typography>Upload Status: {uploadStatus}</Typography>
+                <Typography>Queue Length: {queueStatus.queueLength}</Typography>
+                <Typography>Failed Uploads: {queueStatus.failedUploadsCount}</Typography>
+                <Typography>S3 Status: {s3Status?.s3Status || 'Unknown'}</Typography>
+                <Button
+                    size="small"
+                    onClick={() => dataUploadService.debugCurrentState?.()}
+                    sx={{ mt: 1, color: 'white' }}
+                >
+                    Log Debug Info
+                </Button>
+            </Box>
+        );
     };
 
     // Player info form page
@@ -556,12 +652,12 @@ export default function App() {
                     <Button variant="contained" onClick={handleGuess} sx={{ fontFamily: 'Endzone', mr: 2 }}>
                         Submit
                     </Button>
-                    <Button 
-                        variant="outlined" 
-                        onClick={endGame} 
-                        sx={{ 
-                            fontFamily: 'Endzone', 
-                            color: 'white', 
+                    <Button
+                        variant="outlined"
+                        onClick={endGame}
+                        sx={{
+                            fontFamily: 'Endzone',
+                            color: 'white',
                             borderColor: 'white',
                             '&:hover': {
                                 borderColor: 'lightgray',
@@ -587,10 +683,10 @@ export default function App() {
                             <Typography sx={{ fontFamily: 'Endzone', fontSize: '0.9rem', mt: 1 }}>
                                 Score: {correctCount} correct | Time: {Math.floor(durationInSeconds / 60)}:{(durationInSeconds % 60).toString().padStart(2, '0')}
                             </Typography>
-                            <Button 
-                                onClick={() => window.location.reload()} 
+                            <Button
+                                onClick={() => window.location.reload()}
                                 variant="contained"
-                                sx={{ 
+                                sx={{
                                     fontFamily: 'Endzone',
                                     mt: 2,
                                     backgroundColor: '#4CAF50',
@@ -603,19 +699,19 @@ export default function App() {
                     )}
                     {feedback === '✅ Correct!' && !gameEnded && (
                         <Box mt={4} display="flex" gap={2} justifyContent="center">
-                            <Button 
-                                onClick={nextPlayer} 
+                            <Button
+                                onClick={nextPlayer}
                                 variant="contained"
                                 sx={{ fontFamily: 'Endzone' }}
                             >
                                 Next Player
                             </Button>
-                            <Button 
-                                onClick={endGame} 
+                            <Button
+                                onClick={endGame}
                                 variant="outlined"
-                                sx={{ 
-                                    fontFamily: 'Endzone', 
-                                    color: 'white', 
+                                sx={{
+                                    fontFamily: 'Endzone',
+                                    color: 'white',
                                     borderColor: 'white',
                                     '&:hover': {
                                         borderColor: 'lightgray',
@@ -628,7 +724,7 @@ export default function App() {
                         </Box>
                     )}
                 </Box>
-                
+
                 <Box mt={4} display="flex" justifyContent="center" gap={2}>
                     <a
                         href="https://www.facebook.com/sharer/sharer.php?u=https://yourgameurl.com"
@@ -658,6 +754,9 @@ export default function App() {
                         <img src="https://cdn.jsdelivr.net/npm/simple-icons@v11/icons/reddit.svg" alt="Reddit" width={32} height={32} style={{ filter: 'invert(1)' }} />
                     </a>
                 </Box>
+                {renderUploadStatus()}
+                {renderS3Status()}
+                {renderDebugPanel()}
             </div>
         );
     }

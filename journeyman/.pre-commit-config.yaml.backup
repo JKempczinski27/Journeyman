@@ -1,0 +1,122 @@
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.4.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+        args: ['--multi']
+      - id: check-json
+      - id: check-merge-conflict
+      - id: check-added-large-files
+        args: ['--maxkb=500']
+      - id: mixed-line-ending
+        args: ['--fix=lf']
+
+  - repo: https://github.com/Yelp/detect-secrets
+    rev: v1.4.0
+    hooks:
+      - id: detect-secrets
+        args: ['--baseline', '.secrets.baseline']
+        exclude: |
+          (?x)^(
+            .*\.lock$|
+            package-lock\.json$|
+            .*\.min\.js$|
+            .*\.map$
+          )$
+
+  - repo: https://github.com/returntocorp/semgrep
+    rev: 'v1.45.0'
+    hooks:
+      - id: semgrep
+        args:
+          - '--config=auto'
+          - '--error'
+          - '--skip-unknown-extensions'
+          - '--exclude=node_modules'
+          - '--exclude=build'
+          - '--exclude=*.min.js'
+        types: [javascript, jsx, typescript, tsx]
+
+  - repo: local
+    hooks:
+      - id: eslint
+        name: ESLint
+        entry: npx eslint --fix
+        language: node
+        files: \.(js|jsx|ts|tsx)$
+        exclude: |
+          (?x)^(
+            node_modules/|
+            build/|
+            dist/|
+            .*\.min\.js$
+          )$
+
+      - id: prettier
+        name: Prettier
+        entry: npx prettier --write
+        language: node
+        files: \.(js|jsx|ts|tsx|json|css|scss|md|yaml|yml)$
+        exclude: |
+          (?x)^(
+            node_modules/|
+            build/|
+            dist/|
+            .*\.min\.js$|
+            package-lock\.json$
+          )$
+
+      - id: audit-frontend
+        name: npm audit (Frontend)
+        entry: "bash -c 'cd backend && npm audit --audit-level moderate'"
+        language: system
+        pass_filenames: false
+        always_run: false
+        stages: [commit]
+
+      - id: audit-backend
+        name: npm audit (Backend)
+        entry: bash -c 'cd backend && npm audit --audit-level moderate'
+        language: system
+        pass_filenames: false
+        always_run: false
+        stages: [commit]
+
+      - id: security-headers-check
+        name: Security Headers Validation
+        entry: bash -c 'grep -r "res\.setHeader.*X-Frame-Options\|res\.setHeader.*X-Content-Type-Options\|res\.setHeader.*Content-Security-Policy" backend/ > /dev/null || { echo "❌ Missing security headers in backend code"; exit 1; }'
+        language: system
+        pass_filenames: false
+        files: 'backend/.*\.js$'
+
+      - id: env-file-check
+        name: Environment File Security Check
+        entry: bash -c 'if [ -f .env ] && grep -E "(password|secret|key).*=" .env | grep -v "placeholder\|example"; then echo "❌ Potential secrets in .env file"; exit 1; fi'
+        language: system
+        pass_filenames: false
+        always_run: true
+
+      - id: bundle-size-check
+        name: Bundle Size Check
+        entry: bash -c 'if [ -d build/static/js ]; then find build/static/js -name "*.js" -size +2M -exec echo "❌ Large bundle detected: {}" \; -exec exit 1 \;; fi'
+        language: system
+        pass_filenames: false
+        stages: [pre-push]
+
+  - repo: https://github.com/psf/black
+    rev: 23.3.0
+    hooks:
+      - id: black
+        files: \.py$
+
+  - repo: https://github.com/hadolint/hadolint
+    rev: v2.12.0
+    hooks:
+      - id: hadolint-docker
+        args: ['--ignore', 'DL3008', '--ignore', 'DL3009']
+
+# Pre-commit configuration
+default_stages: [commit]
+fail_fast: true
