@@ -1,0 +1,32 @@
+name: Security Tests for Pull Requests
+
+on:
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  security-tests:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v2
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v2
+        with:
+          node-version: '14'
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Run security tests
+        run: node security-tests/test-runner.js all
+
+      - name: Upload security report
+        if: success()
+        uses: actions/upload-artifact@v2
+        with:
+          name: security-report
+          path: security-report-*.json

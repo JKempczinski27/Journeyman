@@ -1,0 +1,31 @@
+name: Scheduled Security Tests
+
+on:
+  schedule:
+    - cron: '0 0 * * 0'  # Runs every Sunday at midnight
+
+jobs:
+  security-tests:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v2
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v2
+        with:
+          node-version: '14'  # Specify the Node.js version
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Run security tests
+        run: node security-tests/test-runner.js all
+
+      - name: Upload security report
+        if: success()
+        uses: actions/upload-artifact@v2
+        with:
+          name: security-report
+          path: security-report-*.json

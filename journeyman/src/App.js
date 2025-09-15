@@ -25,6 +25,10 @@ import adobeAnalytics, {
 } from './utils/adobeAnalytics';
 import ADOBE_CONFIG from './config/adobeConfig';
 import dataUploadService, { uploadGameData, getS3Status } from './utils/dataUploadService';
+import PrivacyConsent from './components/PrivacyConsent';
+
+// Add this import fix for the AEP hook
+import { useAdobeExperiencePlatform } from './hooks/useAdobeExperiencePlatform';
 
 const PlayerForm   = lazy(() => import('./components/PlayerForm'));
 const LandingPage  = lazy(() => import('./components/LandingPage'));
@@ -73,6 +77,8 @@ function shuffle(array) {
 }
 
 export default function App() {
+    const { trackGameStart, trackGameComplete, trackGuess } = useAdobeExperiencePlatform();
+
     const [page, setPage] = useState('playerForm'); // 'playerForm', 'landing', or 'game'
     const [challengeMode, setChallengeMode] = useState(false);
     const [currentIndex, setCurrentIndex] = useState(0);

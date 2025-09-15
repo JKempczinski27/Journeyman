@@ -1,0 +1,98 @@
+[1mdiff --git a/.vscode/settings.json b/.vscode/settings.json[m
+[1mindex 3b66410..649d4c5 100644[m
+[1m--- a/.vscode/settings.json[m
+[1m+++ b/.vscode/settings.json[m
+[36m@@ -1,3 +1,3 @@[m
+ {[m
+     "git.ignoreLimitWarning": true[m
+[31m-}[m
+\ No newline at end of file[m
+[32m+[m[32m}[m
+[1mdiff --git a/github/PULL_REQUEST_TEMPLATE.md b/github/PULL_REQUEST_TEMPLATE.md[m
+[1mindex c8321a2..553c9e9 100644[m
+[1m--- a/github/PULL_REQUEST_TEMPLATE.md[m
+[1m+++ b/github/PULL_REQUEST_TEMPLATE.md[m
+[36m@@ -19,4 +19,4 @@[m
+ - [ ] I have included tests for my changes (if applicable).[m
+ [m
+ ### Additional Notes[m
+[31m-<!-- Add any other information that may be helpful for the reviewer. -->[m
+\ No newline at end of file[m
+[32m+[m[32m<!-- Add any other information that may be helpful for the reviewer. -->[m
+[1mdiff --git a/github/workflows/security-tests-pr.yml b/github/workflows/security-tests-pr.yml[m
+[1mindex aa86ad7..7b95de3 100644[m
+[1m--- a/github/workflows/security-tests-pr.yml[m
+[1m+++ b/github/workflows/security-tests-pr.yml[m
+[36m@@ -29,4 +29,4 @@[m [mjobs:[m
+         uses: actions/upload-artifact@v2[m
+         with:[m
+           name: security-report[m
+[31m-          path: security-report-*.json[m
+\ No newline at end of file[m
+[32m+[m[32m          path: security-report-*.json[m
+[1mdiff --git a/github/workflows/security-tests-scheduled.yml b/github/workflows/security-tests-scheduled.yml[m
+[1mindex 5bee2e3..ba20a23 100644[m
+[1m--- a/github/workflows/security-tests-scheduled.yml[m
+[1m+++ b/github/workflows/security-tests-scheduled.yml[m
+[36m@@ -28,4 +28,4 @@[m [mjobs:[m
+         uses: actions/upload-artifact@v2[m
+         with:[m
+           name: security-report[m
+[31m-          path: security-report-*.json[m
+\ No newline at end of file[m
+[32m+[m[32m          path: security-report-*.json[m
+[1mdiff --git a/github/workflows/security-tests.yml b/github/workflows/security-tests.yml[m
+[1mindex 2a0b984..0ebf521 100644[m
+[1m--- a/github/workflows/security-tests.yml[m
+[1m+++ b/github/workflows/security-tests.yml[m
+[36m@@ -32,4 +32,4 @@[m [mjobs:[m
+         uses: actions/upload-artifact@v2[m
+         with:[m
+           name: security-report[m
+[31m-          path: security-report-*.json[m
+\ No newline at end of file[m
+[32m+[m[32m          path: security-report-*.json[m
+[1mdiff --git a/journeyman/backend/analytics/adobe-aep-server.js b/journeyman/backend/analytics/adobe-aep-server.js[m
+[1mindex 1ba107a..12c484c 100644[m
+[1m--- a/journeyman/backend/analytics/adobe-aep-server.js[m
+[1m+++ b/journeyman/backend/analytics/adobe-aep-server.js[m
+[36m@@ -483,4 +483,4 @@[m [mclass AdobeExperiencePlatformServer {[m
+   }[m
+ }[m
+ [m
+[31m-module.exports = new AdobeExperiencePlatformServer();[m
+\ No newline at end of file[m
+[32m+[m[32mmodule.exports = new AdobeExperiencePlatformServer();[m
+[1mdiff --git a/journeyman/src/components/PrivacyConsent.js b/journeyman/src/components/PrivacyConsent.js[m
+[1mindex 504608a..d4ac853 100644[m
+[1m--- a/journeyman/src/components/PrivacyConsent.js[m
+[1m+++ b/journeyman/src/components/PrivacyConsent.js[m
+[36m@@ -271,4 +271,4 @@[m [mconst PrivacyConsent = () => {[m
+   );[m
+ };[m
+ [m
+[31m-export default PrivacyConsent;[m
+\ No newline at end of file[m
+[32m+[m[32mexport default PrivacyConsent;[m
+[1mdiff --git a/journeyman/src/utils/adobeExperiencePlatform.js b/journeyman/src/utils/adobeExperiencePlatform.js[m
+[1mindex 90a401d..bb9b452 100644[m
+[1m--- a/journeyman/src/utils/adobeExperiencePlatform.js[m
+[1m+++ b/journeyman/src/utils/adobeExperiencePlatform.js[m
+[36m@@ -370,4 +370,4 @@[m [mexport const trackGameStart = (gameData) => aepClient.trackGameStart(gameData);[m
+ export const trackGameComplete = (gameData) => aepClient.trackGameComplete(gameData);[m
+ export const trackGuess = (guessData) => aepClient.trackGuess(guessData);[m
+ export const sendAEPEvent = (eventData) => aepClient.sendEvent(eventData);[m
+[31m-export const getAEPStatus = () => aepClient.getStatus();[m
+\ No newline at end of file[m
+[32m+[m[32mexport const getAEPStatus = () => aepClient.getStatus();[m
+[1mdiff --git a/src/hooks/useAdobeExperiencePlatform.js b/src/hooks/useAdobeExperiencePlatform.js[m
+[1mindex 9bc3887..d8c1ce0 100644[m
+[1m--- a/src/hooks/useAdobeExperiencePlatform.js[m
+[1m+++ b/src/hooks/useAdobeExperiencePlatform.js[m
+[36m@@ -150,4 +150,4 @@[m [mexport const useAdobeExperiencePlatform = () => {[m
+   };[m
+ };[m
+ [m
+[31m-export default useAdobeExperiencePlatform;[m
+\ No newline at end of file[m
+[32m+[m[32mexport default useAdobeExperiencePlatform;[m
