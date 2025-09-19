@@ -3,10 +3,159 @@
 
 class DataUploadService {
   constructor() {
-    this.apiBase = process.env.REACT_APP_API_URL || 'https://journeyman-production.up.railway.app';
+    this.apiBase = this.resolveApiBase();
     this.retryAttempts = 3;
     this.uploadQueue = [];
     this.isProcessingQueue = false;
+    this.adminCredentials = this.loadAdminCredentials();
+  }
+
+  resolveApiBase() {
+    const explicitBase = process.env.REACT_APP_API_URL
+      || (typeof window !== 'undefined'
+        && window.__JOURNEYMAN_CONFIG__
+        && window.__JOURNEYMAN_CONFIG__.apiBase);
+
+    if (explicitBase) {
+      return explicitBase.replace(/\/$/, '');
+    }
+
+    if (typeof window !== 'undefined' && window.location) {
+      return window.location.origin;
+    }
+
+    return '';
+  }
+
+  loadAdminCredentials() {
+    const fromEnv = {
+      apiKey: process.env.REACT_APP_ADMIN_API_KEY || '',
+      token: process.env.REACT_APP_ADMIN_JWT || ''
+    };
+
+    if (typeof window === 'undefined') {
+      return fromEnv;
+    }
+
+    try {
+      const stored = window.localStorage.getItem('journeyman.adminCredentials');
+      if (!stored) {
+        return fromEnv;
+      }
+
+      const parsed = JSON.parse(stored);
+      return {
+        apiKey: parsed.apiKey || fromEnv.apiKey,
+        token: parsed.token || fromEnv.token
+      };
+    } catch (error) {
+      console.warn('Failed to load stored admin credentials:', error);
+      return fromEnv;
+    }
+  }
+
+  persistAdminCredentials() {
+    if (typeof window === 'undefined') {
+      return;
+    }
+
+    try {
+      window.localStorage.setItem(
+        'journeyman.adminCredentials',
+        JSON.stringify(this.adminCredentials)
+      );
+    } catch (error) {
+      console.warn('Failed to persist admin credentials:', error);
+    }
+  }
+
+  setAdminCredentials(credentials = {}, options = {}) {
+    const { apiKey, token } = credentials;
+
+    this.adminCredentials = {
+      apiKey: apiKey ?? this.adminCredentials.apiKey,
+      token: token ?? this.adminCredentials.token
+    };
+
+    if (options.persist !== false) {
+      this.persistAdminCredentials();
+    }
+
+    return this.adminCredentials;
+  }
+
+  clearAdminCredentials() {
+    this.adminCredentials = { apiKey: '', token: '' };
+    if (typeof window !== 'undefined') {
+      window.localStorage.removeItem('journeyman.adminCredentials');
+    }
+  }
+
+  buildUrl(endpoint) {
+    const base = this.apiBase || '';
+    const normalizedBase = base.endsWith('/') ? base.slice(0, -1) : base;
+    const normalizedEndpoint = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
+    return `${normalizedBase}${normalizedEndpoint}`;
+  }
+
+  buildHeaders({ requiresAdmin = false, includeJson = true, extraHeaders = {} } = {}) {
+    const headers = {};
+
+    if (includeJson && !extraHeaders['Content-Type']) {
+      headers['Content-Type'] = 'application/json';
+    }
+
+    const { apiKey, token } = this.adminCredentials;
+
+    if (requiresAdmin) {
+      if (!apiKey) {
+        throw new Error('Admin API key is not configured');
+      }
+
+      if (!token) {
+        throw new Error('Admin JWT is not configured');
+      }
+    }
+
+    if (apiKey) {
+      headers['x-api-key'] = apiKey;
+    }
+
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+
+    return { ...headers, ...extraHeaders };
+  }
+
+  async authorizedFetch(endpoint, {
+    method = 'GET',
+    body,
+    requiresAdmin = false,
+    headers = {}
+  } = {}) {
+    const includeJson = body !== undefined && body !== null;
+    const requestHeaders = this.buildHeaders({
+      requiresAdmin,
+      includeJson,
+      extraHeaders: headers
+    });
+
+    const response = await fetch(this.buildUrl(endpoint), {
+      method,
+      headers: requestHeaders,
+      body
+    });
+
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+    }
+
+    if (response.status === 204) {
+      return null;
+    }
+
+    return response.json();
   }
 
   // Enhanced single game data upload
@@ -207,9 +356,10 @@ class DataUploadService {
   // Get S3 status and recent files
   async getS3Status() {
     try {
-      const response = await fetch(`${this.apiBase}/s3/status`);
-      const data = await response.json();
-      return data;
+      return await this.authorizedFetch('/s3/status', {
+        method: 'GET',
+        requiresAdmin: true
+      });
     } catch (error) {
       console.error('❌ Failed to get S3 status:', error);
       throw error;
@@ -219,9 +369,10 @@ class DataUploadService {
   // Download data from S3
   async downloadFromS3(key) {
     try {
-      const response = await fetch(`${this.apiBase}/s3/download/${encodeURIComponent(key)}`);
-      const data = await response.json();
-      return data;
+      return await this.authorizedFetch(`/s3/download/${encodeURIComponent(key)}`, {
+        method: 'GET',
+        requiresAdmin: true
+      });
     } catch (error) {
       console.error(`❌ Failed to download ${key} from S3:`, error);
       throw error;
@@ -229,20 +380,17 @@ class DataUploadService {
   }
 
   // Utility functions
-  async makeRequest(endpoint, data) {
-    const response = await fetch(`${this.apiBase}${endpoint}`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(data)
+  async makeRequest(endpoint, data, options = {}) {
+    const body = data !== undefined && data !== null
+      ? JSON.stringify(data)
+      : undefined;
+
+    return this.authorizedFetch(endpoint, {
+      method: options.method || 'POST',
+      body,
+      requiresAdmin: options.requiresAdmin || false,
+      headers: options.headers || {}
     });
-
-    if (!response.ok) {
-      throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-    }
-
-    return response.json();
   }
 
   getBrowserInfo() {
@@ -301,3 +449,7 @@ export const retryFailedUploads = () => dataUploadService.retryFailedUploads();
 export const getS3Status = () => dataUploadService.getS3Status();
 export const requestAnalyticsExport = (startDate, endDate, gameType) =>
   dataUploadService.requestAnalyticsExport(startDate, endDate, gameType);
+export const configureAdminAuth = (credentials, options) =>
+  dataUploadService.setAdminCredentials(credentials, options);
+export const clearAdminAuth = () => dataUploadService.clearAdminCredentials();
+export const getAdminAuth = () => ({ ...dataUploadService.adminCredentials });

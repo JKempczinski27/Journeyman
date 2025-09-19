@@ -5,6 +5,7 @@ const hpp = require('hpp');
 const mongoSanitize = require('express-mongo-sanitize');
 const xss = require('xss-clean');
 const crypto = require('crypto');
+const jwt = require('jsonwebtoken');
 
 // 1. OWASP A01:2021 - Broken Access Control
 const authMiddleware = {
@@ -320,6 +321,32 @@ const authentication = {
 
   clearFailedAttempts: (identifier) => {
     authentication.accountLockout.delete(identifier);
+  },
+
+  verifyJWT: (req, res, next) => {
+    const authHeader = req.headers['authorization'];
+    const jwtSecret = process.env.JWT_SECRET;
+
+    if (!jwtSecret) {
+      return res.status(500).json({ error: 'Server configuration error' });
+    }
+
+    if (!authHeader || !authHeader.toLowerCase().startsWith('bearer ')) {
+      return res.status(401).json({ error: 'Authorization token required' });
+    }
+
+    const token = authHeader.split(' ')[1];
+
+    try {
+      const decoded = jwt.verify(token, jwtSecret, {
+        algorithms: ['HS256']
+      });
+
+      req.user = decoded;
+      next();
+    } catch (error) {
+      return res.status(401).json({ error: 'Invalid or expired token' });
+    }
   }
 };
 

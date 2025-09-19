@@ -223,100 +223,177 @@ app.post('/export-analytics', async (req, res) => {
 });
 
 // S3 data management endpoints
-app.get('/s3/status', async (req, res) => {
-  try {
-    const bucketContents = await s3Manager.listFiles('', 10);
-    const status = await checkS3Health();
-
-    res.json({
-      success: true,
-      s3Status: status,
-      recentFiles: bucketContents.slice(0, 5).map(file => ({
+app.get('/s3/status',
+  authMiddleware.validateApiKey,
+  authentication.verifyJWT,
+  authMiddleware.requireRole('admin'),
+  async (req, res) => {
+    try {
+      const bucketContents = await s3Manager.listFiles('', 10);
+      const filesArray = Array.isArray(bucketContents)
+        ? bucketContents
+        : bucketContents.files || [];
+      const status = await checkS3Health();
+      const recentFiles = filesArray.slice(0, 5).map(file => ({
         key: file.Key,
         size: file.Size,
         lastModified: file.LastModified
-      })),
-      totalFiles: bucketContents.length
-    });
-  } catch (error) {
-    res.status(500).json({
-      success: false,
-      error: 'Failed to get S3 status',
-      message: error.message
-    });
+      }));
+
+      securityLogging.logSecurityEvent('S3_STATUS_ACCESSED', {
+        bucket: s3Manager.bucket,
+        totalFiles: filesArray.length,
+        adminId: req.user?.id || req.user?.email || req.user?.sub
+      }, req);
+
+      res.json({
+        success: true,
+        s3Status: status,
+        recentFiles,
+        totalFiles: filesArray.length
+      });
+    } catch (error) {
+      securityLogging.logSecurityEvent('S3_STATUS_ERROR', {
+        error: error.message,
+        adminId: req.user?.id || req.user?.email || req.user?.sub
+      }, req);
+
+      res.status(500).json({
+        success: false,
+        error: 'Failed to get S3 status',
+        message: error.message
+      });
+    }
   }
-});
+);
 
-app.get('/s3/list/:prefix*', async (req, res) => {
-  try {
-    const prefix = req.params.prefix + (req.params[0] || '');
-    const maxKeys = parseInt(req.query.limit) || 100;
+app.get('/s3/list/:prefix*',
+  authMiddleware.validateApiKey,
+  authentication.verifyJWT,
+  authMiddleware.requireRole('admin'),
+  async (req, res) => {
+    try {
+      const prefix = req.params.prefix + (req.params[0] || '');
+      const maxKeys = parseInt(req.query.limit) || 100;
 
-    const files = await s3Manager.listFiles(prefix, maxKeys);
-
-    res.json({
-      success: true,
-      prefix,
-      files: files.map(file => ({
+      const files = await s3Manager.listFiles(prefix, maxKeys);
+      const fileList = Array.isArray(files)
+        ? files
+        : files.files || [];
+      const responseFiles = fileList.map(file => ({
         key: file.Key,
         size: file.Size,
         lastModified: file.LastModified
-      }))
-    });
-  } catch (error) {
-    res.status(500).json({
-      success: false,
-      error: 'Failed to list S3 files',
-      message: error.message
-    });
-  }
-});
+      }));
 
-app.get('/s3/download/:key*', async (req, res) => {
-  try {
-    const key = req.params.key + (req.params[0] || '');
-    const data = await s3Manager.downloadData(key);
+      securityLogging.logSecurityEvent('S3_LIST_ACCESSED', {
+        bucket: s3Manager.bucket,
+        prefix,
+        returnedFiles: responseFiles.length,
+        adminId: req.user?.id || req.user?.email || req.user?.sub
+      }, req);
 
-    res.json({
-      success: true,
-      key,
-      data
-    });
-  } catch (error) {
-    res.status(500).json({
-      success: false,
-      error: 'Failed to download from S3',
-      message: error.message
-    });
+      res.json({
+        success: true,
+        prefix,
+        files: responseFiles
+      });
+    } catch (error) {
+      securityLogging.logSecurityEvent('S3_LIST_ERROR', {
+        prefix: req.params.prefix,
+        error: error.message,
+        adminId: req.user?.id || req.user?.email || req.user?.sub
+      }, req);
+
+      res.status(500).json({
+        success: false,
+        error: 'Failed to list S3 files',
+        message: error.message
+      });
+    }
   }
-});
+);
+
+app.get('/s3/download/:key*',
+  authMiddleware.validateApiKey,
+  authentication.verifyJWT,
+  authMiddleware.requireRole('admin'),
+  async (req, res) => {
+    try {
+      const key = req.params.key + (req.params[0] || '');
+      const data = await s3Manager.downloadData(key);
+
+      securityLogging.logSecurityEvent('S3_DOWNLOAD_ACCESSED', {
+        bucket: s3Manager.bucket,
+        key,
+        adminId: req.user?.id || req.user?.email || req.user?.sub
+      }, req);
+
+      res.json({
+        success: true,
+        key,
+        data
+      });
+    } catch (error) {
+      securityLogging.logSecurityEvent('S3_DOWNLOAD_ERROR', {
+        key: req.params.key,
+        error: error.message,
+        adminId: req.user?.id || req.user?.email || req.user?.sub
+      }, req);
+
+      res.status(500).json({
+        success: false,
+        error: 'Failed to download from S3',
+        message: error.message
+      });
+    }
+  }
+);
 
 // Daily export endpoint
-app.post('/create-daily-export', async (req, res) => {
-  try {
-    const { date, gameType = 'journeyman' } = req.body;
-    const exportDate = date || new Date().toISOString().slice(0, 10);
+app.post('/create-daily-export',
+  authMiddleware.validateApiKey,
+  authentication.verifyJWT,
+  authMiddleware.requireRole('admin'),
+  async (req, res) => {
+    try {
+      const { date, gameType = 'journeyman' } = req.body;
+      const exportDate = date || new Date().toISOString().slice(0, 10);
 
-    console.log(`📅 Creating daily export for ${exportDate}`);
+      console.log(`📅 Creating daily export for ${exportDate}`);
 
-    const result = await s3Manager.createDailyExport(exportDate, gameType);
+      const result = await s3Manager.createDailyExport(exportDate, gameType);
 
-    res.json({
-      success: true,
-      exportDate,
-      gameType,
-      s3Location: result.Location,
-      message: 'Daily export created successfully'
-    });
-  } catch (error) {
-    console.error('❌ Daily export error:', error);
-    res.status(500).json({
-      success: false,
-      error: 'Failed to create daily export',
-      message: error.message
-    });
+      securityLogging.logSecurityEvent('S3_DAILY_EXPORT_CREATED', {
+        bucket: s3Manager.bucket,
+        exportDate,
+        gameType,
+        adminId: req.user?.id || req.user?.email || req.user?.sub
+      }, req);
+
+      res.json({
+        success: true,
+        exportDate,
+        gameType,
+        s3Location: result.Location,
+        message: 'Daily export created successfully'
+      });
+    } catch (error) {
+      console.error('❌ Daily export error:', error);
+
+      securityLogging.logSecurityEvent('S3_DAILY_EXPORT_ERROR', {
+        error: error.message,
+        adminId: req.user?.id || req.user?.email || req.user?.sub
+      }, req);
+
+      res.status(500).json({
+        success: false,
+        error: 'Failed to create daily export',
+        message: error.message
+      });
+    }
   }
-});
+);
 
 // Analytics data endpoints (existing ones enhanced)
 app.get('/analytics/:gameType?', async (req, res) => {
