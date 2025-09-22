@@ -225,19 +225,34 @@ app.post('/export-analytics', async (req, res) => {
 // S3 data management endpoints
 app.get('/s3/status', async (req, res) => {
   try {
-    const bucketContents = await s3Manager.listFiles('', 10);
-    const status = await checkS3Health();
+    let bucketContents = [];
 
-    res.json({
+    try {
+      bucketContents = await s3Manager.listFiles('', 10);
+    } catch (listError) {
+      console.error('S3 status listing error:', listError);
+      bucketContents = [];
+    }
+
+    const files = Array.isArray(bucketContents) ? bucketContents : [];
+    const status = await checkS3Health();
+    const response = {
       success: true,
+      mode: s3Manager.enabled ? 'aws' : 'mock',
       s3Status: status,
-      recentFiles: bucketContents.slice(0, 5).map(file => ({
+      recentFiles: files.slice(0, 5).map(file => ({
         key: file.Key,
         size: file.Size,
         lastModified: file.LastModified
       })),
-      totalFiles: bucketContents.length
-    });
+      totalFiles: files.length
+    };
+
+    if (!s3Manager.enabled) {
+      response.message = 'AWS S3 integration disabled - running in mock mode with no remote files available.';
+    }
+
+    res.json(response);
   } catch (error) {
     res.status(500).json({
       success: false,
@@ -252,9 +267,10 @@ app.get('/s3/list/:prefix*', async (req, res) => {
     const prefix = req.params.prefix + (req.params[0] || '');
     const maxKeys = parseInt(req.query.limit) || 100;
 
-    const files = await s3Manager.listFiles(prefix, maxKeys);
+    const rawFiles = await s3Manager.listFiles(prefix, maxKeys);
+    const files = Array.isArray(rawFiles) ? rawFiles : [];
 
-    res.json({
+    const response = {
       success: true,
       prefix,
       files: files.map(file => ({
@@ -262,7 +278,14 @@ app.get('/s3/list/:prefix*', async (req, res) => {
         size: file.Size,
         lastModified: file.LastModified
       }))
-    });
+    };
+
+    if (!s3Manager.enabled) {
+      response.mode = 'mock';
+      response.message = 'AWS S3 integration disabled - returning empty file list.';
+    }
+
+    res.json(response);
   } catch (error) {
     res.status(500).json({
       success: false,
@@ -347,6 +370,10 @@ app.get('/analytics/:gameType?', async (req, res) => {
 
 // Utility functions
 async function checkS3Health() {
+  if (!s3Manager.enabled) {
+    return 'mock-mode';
+  }
+
   try {
     await s3Manager.listFiles('', 1);
     return 'connected';

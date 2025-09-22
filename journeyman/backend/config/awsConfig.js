@@ -45,6 +45,7 @@ class S3Manager {
   constructor() {
     this.enabled = process.env.AWS_ENABLED === 'true';
     this.bucket = process.env.AWS_S3_BUCKET || 'journeyman-data';
+    this.s3 = s3;
 
     if (this.enabled) {
       console.log('AWS S3 integration enabled');
@@ -141,11 +142,7 @@ class S3Manager {
   async listFiles(prefix = '', maxKeys = 1000) {
     if (!this.enabled) {
       console.log(`Mock S3 list: ${prefix}`);
-      return {
-        success: true,
-        files: [],
-        message: 'Local storage mode - no S3 files available'
-      };
+      return [];
     }
 
     const params = {
@@ -156,7 +153,7 @@ class S3Manager {
 
     try {
       const result = await this.s3.listObjectsV2(params).promise();
-      return result.Contents;
+      return Array.isArray(result.Contents) ? result.Contents : [];
     } catch (error) {
       console.error('❌ Error listing S3 files:', error);
       throw error;
@@ -168,8 +165,7 @@ class S3Manager {
     if (!this.enabled) {
       console.log(`Mock S3 download: ${key}`);
       return {
-        success: true,
-        data: null,
+        mock: true,
         message: 'Local storage mode - no S3 download available'
       };
     }
