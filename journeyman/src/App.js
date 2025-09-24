@@ -15,13 +15,11 @@ import './App.css';
 import adobeAnalytics, {
   initializeAnalytics,
   trackPageView,
-  trackGameStart,
-  trackGameComplete,
-  trackGuess,
   trackModeSelection,
   trackSocialShare,
   trackPlayerRegistration,
-  trackGameQuit
+  trackGameQuit,
+  trackGameComplete as trackAdobeGameComplete
 } from './utils/adobeAnalytics';
 import ADOBE_CONFIG from './config/adobeConfig';
 import dataUploadService, { uploadGameData, getS3Status } from './utils/dataUploadService';
@@ -77,7 +75,12 @@ function shuffle(array) {
 }
 
 export default function App() {
-    const { trackGameStart, trackGameComplete, trackGuess } = useAdobeExperiencePlatform();
+    const {
+        trackGameStart: trackAepGameStart,
+        trackGameComplete: trackAepGameComplete,
+        trackGuess: trackAepGuess,
+        setUserIdentity
+    } = useAdobeExperiencePlatform();
 
     const [page, setPage] = useState('playerForm'); // 'playerForm', 'landing', or 'game'
     const [challengeMode, setChallengeMode] = useState(false);
