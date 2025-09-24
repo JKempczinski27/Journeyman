@@ -19,16 +19,23 @@ class DataService {
     try {
       const filename = `player_${Date.now()}.json`;
       const filepath = path.join(this.dataDir, filename);
+      const timestamp = new Date().toISOString();
+      const recordId = this.generateId();
 
       const dataToSave = {
         ...playerData,
-        timestamp: new Date().toISOString(),
-        id: this.generateId()
+        timestamp,
+        id: recordId
       };
 
       await fs.writeFile(filepath, JSON.stringify(dataToSave, null, 2));
       console.log(`Player data saved: ${filename}`);
-      return dataToSave;
+
+      return {
+        playerId: recordId,
+        savedAt: timestamp,
+        storageKey: filename
+      };
     } catch (error) {
       console.error('Failed to save player data:', error);
       throw error;

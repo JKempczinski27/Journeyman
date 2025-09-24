@@ -114,38 +114,62 @@ app.get('/api/admin/stats',
 );
 
 // Enhanced player data endpoint with S3 pipeline
-app.post('/save-player', async (req, res) => {
-  try {
-    // Extract client info
-    const clientData = {
-      ...req.body,
-      ip: req.ip || req.connection.remoteAddress,
-      userAgent: req.get('User-Agent'),
-      timestamp: new Date().toISOString()
-    };
+app.post('/save-player',
+  inputValidation.validatePlayerData,
+  inputValidation.validateGameData,
+  async (req, res) => {
+    try {
+      // Extract client info
+      const clientData = {
+        ...req.body,
+        ip: req.ip || req.connection.remoteAddress,
+        userAgent: req.get('User-Agent'),
+        timestamp: new Date().toISOString()
+      };
 
-    console.log('📥 Received player data:', {
-      name: clientData.name,
-      email: clientData.email,
-      gameType: clientData.gameType || 'journeyman',
-      mode: clientData.mode,
-      score: clientData.correctCount
-    });
+      const { name, email } = clientData;
 
-    // Save data through pipeline
-    const result = await dataService.savePlayerData(clientData);
+      if (!name || !email) {
+        return res.status(400).json({
+          success: false,
+          error: 'Player name and email are required'
+        });
+      }
 
-    res.json(result);
-  } catch (error) {
-    console.error('❌ Error in /save-player:', error);
-    res.status(500).json({
-      success: false,
-      error: 'Failed to save player data',
-      message: error.message,
-      timestamp: new Date().toISOString()
-    });
+      console.log('📥 Received player data:', {
+        name,
+        email,
+        gameType: clientData.gameType || 'journeyman',
+        mode: clientData.mode,
+        score: clientData.correctCount
+      });
+
+      // Save data through pipeline
+      const { playerId, savedAt } = await dataService.savePlayerData(clientData);
+      const sessionId = req.sessionID;
+
+      res.json({
+        success: true,
+        message: 'Player data saved successfully',
+        sessionId,
+        playerId,
+        savedAt,
+        metadata: {
+          gameType: clientData.gameType || 'journeyman',
+          correctCount: clientData.correctCount ?? null
+        }
+      });
+    } catch (error) {
+      console.error('❌ Error in /save-player:', error);
+      res.status(500).json({
+        success: false,
+        error: 'Failed to save player data',
+        message: error.message,
+        timestamp: new Date().toISOString()
+      });
+    }
   }
-});
+);
 
 // Batch upload endpoint
 app.post('/batch-upload', async (req, res) => {

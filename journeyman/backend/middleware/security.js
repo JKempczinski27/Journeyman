@@ -116,19 +116,31 @@ const inputValidation = {
 
     // Name validation
     if (!name || typeof name !== 'string' || name.length > 100) {
-      return res.status(400).json({ error: 'Invalid name format' });
+      return res.status(400).json({
+        success: false,
+        error: 'Invalid name format',
+        field: 'name'
+      });
     }
 
     // Check for suspicious patterns in name
     const suspiciousNamePatterns = /<script|javascript:|on\w+=/i;
     if (suspiciousNamePatterns.test(name)) {
-      return res.status(400).json({ error: 'Invalid characters in name' });
+      return res.status(400).json({
+        success: false,
+        error: 'Invalid characters in name',
+        field: 'name'
+      });
     }
 
     // Email validation with stricter regex
     const emailRegex = /^[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$/;
     if (!email || !emailRegex.test(email) || email.length > 254) {
-      return res.status(400).json({ error: 'Invalid email format' });
+      return res.status(400).json({
+        success: false,
+        error: 'Invalid email format',
+        field: 'email'
+      });
     }
 
     // Sanitize inputs
@@ -144,33 +156,53 @@ const inputValidation = {
 
     if (correctCount !== undefined) {
       if (!Number.isInteger(correctCount) || correctCount < 0 || correctCount > 1000) {
-        return res.status(400).json({ error: 'Invalid correctCount' });
+        return res.status(400).json({
+          success: false,
+          error: 'Invalid correctCount',
+          field: 'correctCount'
+        });
       }
     }
 
     if (durationInSeconds !== undefined) {
       if (!Number.isInteger(durationInSeconds) || durationInSeconds < 0 || durationInSeconds > 86400) {
-        return res.status(400).json({ error: 'Invalid duration' });
+        return res.status(400).json({
+          success: false,
+          error: 'Invalid duration',
+          field: 'durationInSeconds'
+        });
       }
     }
 
     if (gameType !== undefined) {
       const validGameTypes = ['journeyman', 'challenge', 'easy'];
       if (!validGameTypes.includes(gameType)) {
-        return res.status(400).json({ error: 'Invalid game type' });
+        return res.status(400).json({
+          success: false,
+          error: 'Invalid game type',
+          field: 'gameType'
+        });
       }
     }
 
     // Validate guesses array
     if (guesses !== undefined) {
       if (!Array.isArray(guesses) || guesses.length > 100) {
-        return res.status(400).json({ error: 'Invalid guesses format' });
+        return res.status(400).json({
+          success: false,
+          error: 'Invalid guesses format',
+          field: 'guesses'
+        });
       }
 
       // Validate each guess
       for (const guess of guesses) {
         if (typeof guess !== 'string' || guess.length > 200) {
-          return res.status(400).json({ error: 'Invalid guess format' });
+          return res.status(400).json({
+            success: false,
+            error: 'Invalid guess format',
+            field: 'guesses'
+          });
         }
       }
     }
