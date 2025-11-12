@@ -23,6 +23,12 @@ const { S3Manager } = require('./config/awsConfig');
 const app = express();
 const PORT = process.env.PORT || 3001;
 
+// Enable trust proxy for rate limiting
+app.set("trust proxy", 1);
+
+// **ADD THIS LINE: Enable trust proxy for rate limiting**
+app.set('trust proxy', 1);
+
 // Initialize services
 const dataService = new DataService();
 const s3Manager = new S3Manager();
@@ -392,6 +398,10 @@ app.get('/analytics/:gameType?', async (req, res) => {
   }
 });
 
+// Add Data Protection routes
+const dataProtectionRoutes = require('./routes/dataProtection');
+app.use('/api/data-protection', dataProtectionRoutes);
+
 // Utility functions
 async function checkS3Health() {
   if (!s3Manager.enabled) {
@@ -474,6 +484,10 @@ process.on('SIGTERM', () => {
 
 process.on('SIGINT', () => {
   console.log('SIGINT received, shutting down gracefully');
+
+// Data Protection Routes - Proxy to Python backend
+const dataProtectionRoutes = require("./routes/dataProtection");
+app.use("/api/data-protection", dataProtectionRoutes);
   process.exit(0);
 });
 
