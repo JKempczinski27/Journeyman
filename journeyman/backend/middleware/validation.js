@@ -284,12 +284,75 @@ const securityHeaders = (req, res, next) => {
   next();
 };
 
+// Trends endpoint validation
+const trendsValidation = [
+  body('startDate')
+    .optional()
+    .trim()
+    .isISO8601()
+    .withMessage('Start date must be a valid ISO 8601 date'),
+
+  body('endDate')
+    .optional()
+    .trim()
+    .isISO8601()
+    .withMessage('End date must be a valid ISO 8601 date'),
+
+  body('interval')
+    .optional()
+    .trim()
+    .isIn(['daily', 'weekly', 'monthly'])
+    .withMessage('Interval must be daily, weekly, or monthly')
+];
+
+// Player progression validation
+const playerProgressionValidation = [
+  body('limit')
+    .optional()
+    .isInt({ min: 1, max: 1000 })
+    .withMessage('Limit must be between 1 and 1000'),
+
+  body('offset')
+    .optional()
+    .isInt({ min: 0 })
+    .withMessage('Offset must be a non-negative integer')
+];
+
+// Advanced analytics validation
+const advancedAnalyticsValidation = [
+  body('startDate')
+    .optional()
+    .trim()
+    .isISO8601()
+    .withMessage('Start date must be a valid ISO 8601 date'),
+
+  body('endDate')
+    .optional()
+    .trim()
+    .isISO8601()
+    .withMessage('End date must be a valid ISO 8601 date'),
+
+  body('metrics')
+    .optional()
+    .isArray()
+    .withMessage('Metrics must be an array'),
+
+  body('metrics.*')
+    .optional()
+    .trim()
+    .isIn(['completion_rate', 'average_score', 'player_retention', 'social_share_rate', 'difficulty_distribution', 'time_distribution'])
+    .withMessage('Invalid metric specified')
+];
+
 module.exports = {
   playerValidation,
   gameDataValidation,
   analyticsExportValidation,
   batchUploadValidation,
   s3KeyValidation,
+  trendsValidation,
+  playerProgressionValidation,
+  advancedAnalyticsValidation,
   validateRequest,
   rateLimitValidation,
   sanitizeRequest,
