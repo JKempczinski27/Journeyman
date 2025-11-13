@@ -1,0 +1,259 @@
+name: Deploy to Production
+
+on:
+  push:
+    branches: [ main ]
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Environment to deploy to'
+        required: true
+        default: 'production'
+        type: choice
+        options:
+          - production
+          - staging
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_PREFIX: ${{ github.repository }}
+
+jobs:
+  deploy:
+    name: Deploy to Kubernetes
+    runs-on: ubuntu-latest
+    environment:
+      name: ${{ github.event.inputs.environment || 'production' }}
+      url: ${{ vars.APP_URL }}
+
+    permissions:
+      contents: read
+      packages: read
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up kubectl
+        uses: azure/setup-kubectl@v3
+        with:
+          version: 'latest'
+
+      - name: Configure kubectl
+        run: |
+          mkdir -p $HOME/.kube
+          echo "${{ secrets.KUBE_CONFIG }}" | base64 -d > $HOME/.kube/config
+          chmod 600 $HOME/.kube/config
+
+      - name: Log in to Container Registry
+        run: |
+          echo "${{ secrets.GITHUB_TOKEN }}" | docker login ${{ env.REGISTRY }} -u ${{ github.actor }} --password-stdin
+
+      - name: Update Kubernetes secrets
+        run: |
+          kubectl create secret generic journeyman-secrets \
+            --from-literal=DATABASE_URL="${{ secrets.DATABASE_URL }}" \
+            --from-literal=REDIS_URL="${{ secrets.REDIS_URL }}" \
+            --from-literal=SESSION_SECRET="${{ secrets.SESSION_SECRET }}" \
+            --from-literal=API_KEY="${{ secrets.API_KEY }}" \
+            --from-literal=ENCRYPTION_KEY="${{ secrets.ENCRYPTION_KEY }}" \
+            --from-literal=AWS_ACCESS_KEY_ID="${{ secrets.AWS_ACCESS_KEY_ID }}" \
+            --from-literal=AWS_SECRET_ACCESS_KEY="${{ secrets.AWS_SECRET_ACCESS_KEY }}" \
+            --namespace=roster-recall \
+            --dry-run=client -o yaml | kubectl apply -f -
+
+      - name: Update ConfigMap
+        run: |
+          kubectl create configmap journeyman-config \
+            --from-literal=NODE_ENV=production \
+            --from-literal=FRONTEND_URL="${{ vars.FRONTEND_URL }}" \
+            --from-literal=AWS_REGION="${{ vars.AWS_REGION || 'us-east-1' }}" \
+            --from-literal=S3_BUCKET_NAME="${{ vars.S3_BUCKET_NAME }}" \
+            --namespace=roster-recall \
+            --dry-run=client -o yaml | kubectl apply -f -
+
+      - name: Deploy Backend
+        run: |
+          kubectl set image deployment/backend-deployment \
+            backend=${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-backend:${{ github.sha }} \
+            --namespace=roster-recall
+          kubectl rollout status deployment/backend-deployment --namespace=roster-recall --timeout=5m
+
+      - name: Deploy Dashboard
+        run: |
+          kubectl set image deployment/dashboard-deployment \
+            dashboard=${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-dashboard:${{ github.sha }} \
+            --namespace=roster-recall
+          kubectl rollout status deployment/dashboard-deployment --namespace=roster-recall --timeout=5m
+
+      - name: Deploy Python Backend
+        run: |
+          # Create Python backend deployment if it doesn't exist
+          kubectl apply -f - <<EOF
+          apiVersion: apps/v1
+          kind: Deployment
+          metadata:
+            name: backend-python-deployment
+            namespace: roster-recall
+          spec:
+            replicas: 3
+            selector:
+              matchLabels:
+                app: backend-python
+            template:
+              metadata:
+                labels:
+                  app: backend-python
+              spec:
+                containers:
+                - name: backend-python
+                  image: ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-backend-python:${{ github.sha }}
+                  ports:
+                  - containerPort: 5001
+                  envFrom:
+                  - secretRef:
+                      name: journeyman-secrets
+                  - configMapRef:
+                      name: journeyman-config
+                  resources:
+                    requests:
+                      memory: "128Mi"
+                      cpu: "100m"
+                    limits:
+                      memory: "256Mi"
+                      cpu: "300m"
+                  livenessProbe:
+                    httpGet:
+                      path: /api/health
+                      port: 5001
+                    initialDelaySeconds: 30
+                    periodSeconds: 10
+                  readinessProbe:
+                    httpGet:
+                      path: /api/health
+                      port: 5001
+                    initialDelaySeconds: 10
+                    periodSeconds: 5
+          EOF
+          kubectl rollout status deployment/backend-python-deployment --namespace=roster-recall --timeout=5m
+
+      - name: Deploy Frontend (Nginx)
+        run: |
+          # Create frontend deployment
+          kubectl apply -f - <<EOF
+          apiVersion: apps/v1
+          kind: Deployment
+          metadata:
+            name: frontend-deployment
+            namespace: roster-recall
+          spec:
+            replicas: 3
+            selector:
+              matchLabels:
+                app: frontend
+            template:
+              metadata:
+                labels:
+                  app: frontend
+              spec:
+                containers:
+                - name: frontend
+                  image: ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-frontend:${{ github.sha }}
+                  ports:
+                  - containerPort: 80
+                  - containerPort: 443
+                  resources:
+                    requests:
+                      memory: "64Mi"
+                      cpu: "50m"
+                    limits:
+                      memory: "128Mi"
+                      cpu: "200m"
+                  livenessProbe:
+                    httpGet:
+                      path: /
+                      port: 80
+                    initialDelaySeconds: 15
+                    periodSeconds: 10
+                  readinessProbe:
+                    httpGet:
+                      path: /
+                      port: 80
+                    initialDelaySeconds: 5
+                    periodSeconds: 5
+          ---
+          apiVersion: v1
+          kind: Service
+          metadata:
+            name: frontend-service
+            namespace: roster-recall
+          spec:
+            type: LoadBalancer
+            selector:
+              app: frontend
+            ports:
+            - name: http
+              port: 80
+              targetPort: 80
+            - name: https
+              port: 443
+              targetPort: 443
+          EOF
+          kubectl rollout status deployment/frontend-deployment --namespace=roster-recall --timeout=5m
+
+      - name: Verify deployment
+        run: |
+          echo "Checking deployment status..."
+          kubectl get deployments --namespace=roster-recall
+          kubectl get pods --namespace=roster-recall
+          kubectl get services --namespace=roster-recall
+
+      - name: Run smoke tests
+        run: |
+          # Get the LoadBalancer IP
+          FRONTEND_IP=$(kubectl get service frontend-service --namespace=roster-recall -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+
+          if [ -z "$FRONTEND_IP" ]; then
+            echo "Waiting for LoadBalancer IP..."
+            sleep 60
+            FRONTEND_IP=$(kubectl get service frontend-service --namespace=roster-recall -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+          fi
+
+          echo "Testing frontend at http://$FRONTEND_IP"
+          curl --fail --retry 5 --retry-delay 10 http://$FRONTEND_IP || echo "Frontend test failed"
+
+      - name: Notify deployment status
+        if: always()
+        run: |
+          if [ "${{ job.status }}" == "success" ]; then
+            echo "✅ Deployment successful!"
+          else
+            echo "❌ Deployment failed!"
+          fi
+
+  rollback:
+    name: Rollback on Failure
+    runs-on: ubuntu-latest
+    needs: deploy
+    if: failure()
+    environment:
+      name: ${{ github.event.inputs.environment || 'production' }}
+
+    steps:
+      - name: Set up kubectl
+        uses: azure/setup-kubectl@v3
+
+      - name: Configure kubectl
+        run: |
+          mkdir -p $HOME/.kube
+          echo "${{ secrets.KUBE_CONFIG }}" | base64 -d > $HOME/.kube/config
+
+      - name: Rollback deployments
+        run: |
+          kubectl rollout undo deployment/backend-deployment --namespace=roster-recall
+          kubectl rollout undo deployment/dashboard-deployment --namespace=roster-recall
+          kubectl rollout undo deployment/backend-python-deployment --namespace=roster-recall
+          kubectl rollout undo deployment/frontend-deployment --namespace=roster-recall
+          echo "⚠️ Rollback completed"
