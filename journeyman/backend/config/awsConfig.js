@@ -54,8 +54,8 @@ class S3Manager {
     }
   }
 
-  // Upload data to S3
-  async uploadData(key, data, metadata = {}) {
+  // Upload data to S3 with retry logic
+  async uploadData(key, data, metadata = {}, retries = 3) {
     if (!this.enabled) {
       console.log(`Mock S3 upload: ${key}`);
       return {
@@ -78,14 +78,36 @@ class S3Manager {
       }
     };
 
-    try {
-      const result = await this.s3.upload(params).promise();
-      console.log(`✅ Data uploaded to S3: ${key}`);
-      return result;
-    } catch (error) {
-      console.error(`❌ S3 Upload Error for ${key}:`, error);
-      throw error;
+    let lastError;
+    for (let attempt = 0; attempt < retries; attempt++) {
+      try {
+        const result = await this.s3.upload(params).promise();
+        if (attempt > 0) {
+          console.log(`✅ Data uploaded to S3 on attempt ${attempt + 1}: ${key}`);
+        } else {
+          console.log(`✅ Data uploaded to S3: ${key}`);
+        }
+        return result;
+      } catch (error) {
+        lastError = error;
+        const isLastAttempt = attempt === retries - 1;
+
+        if (isLastAttempt) {
+          console.error(`❌ S3 Upload failed after ${retries} attempts for ${key}:`, error.message);
+        } else {
+          const delay = Math.min(1000 * Math.pow(2, attempt), 10000); // Exponential backoff, max 10s
+          console.warn(`⚠️  S3 Upload attempt ${attempt + 1} failed for ${key}, retrying in ${delay}ms...`);
+          await this.delay(delay);
+        }
+      }
     }
+
+    throw lastError;
+  }
+
+  // Utility delay function
+  delay(ms) {
+    return new Promise(resolve => setTimeout(resolve, ms));
   }
 
   // Upload raw player data
@@ -209,6 +231,152 @@ class S3Manager {
       });
     } catch (error) {
       console.error('❌ Error creating daily export:', error);
+      throw error;
+    }
+  }
+
+  // Backup Strategy Methods
+  async createBackup(backupType = 'incremental') {
+    try {
+      const timestamp = new Date().toISOString();
+      const date = timestamp.slice(0, 10);
+
+      console.log(`📦 Creating ${backupType} backup for ${date}...`);
+
+      const backupData = {
+        backupType,
+        timestamp,
+        date,
+        files: []
+      };
+
+      // Get all raw data for today
+      const rawDataPrefix = `${awsConfig.folders.rawData}`;
+      const files = await this.listFiles(rawDataPrefix);
+
+      // Filter files from today for incremental, or all files for full backup
+      const filesToBackup = backupType === 'incremental'
+        ? files.filter(f => f.Key.includes(date))
+        : files;
+
+      console.log(`📊 Found ${filesToBackup.length} files to backup`);
+
+      // Create backup manifest
+      backupData.files = filesToBackup.map(f => ({
+        key: f.Key,
+        size: f.Size,
+        lastModified: f.LastModified
+      }));
+
+      backupData.totalFiles = filesToBackup.length;
+      backupData.totalSize = filesToBackup.reduce((sum, f) => sum + f.Size, 0);
+
+      // Upload backup manifest
+      const backupKey = awsConfig.fileNaming.backup(timestamp);
+      await this.uploadData(backupKey, backupData, {
+        backupType,
+        fileCount: backupData.totalFiles.toString()
+      });
+
+      console.log(`✅ Backup manifest created: ${backupKey}`);
+      return {
+        success: true,
+        backupKey,
+        filesBackedUp: backupData.totalFiles,
+        totalSize: backupData.totalSize
+      };
+    } catch (error) {
+      console.error('❌ Backup creation failed:', error);
+      throw error;
+    }
+  }
+
+  // Rotate old backups (keep last N days)
+  async rotateBackups(daysToKeep = 30) {
+    try {
+      console.log(`🗑️  Rotating backups (keeping last ${daysToKeep} days)...`);
+
+      const backupsPrefix = awsConfig.folders.backups;
+      const backupFiles = await this.listFiles(backupsPrefix);
+
+      const cutoffDate = new Date();
+      cutoffDate.setDate(cutoffDate.getDate() - daysToKeep);
+
+      const filesToDelete = backupFiles.filter(file => {
+        const fileDate = new Date(file.LastModified);
+        return fileDate < cutoffDate;
+      });
+
+      console.log(`📋 Found ${filesToDelete.length} backups to delete (older than ${cutoffDate.toISOString().slice(0, 10)})`);
+
+      if (filesToDelete.length === 0) {
+        return { deleted: 0, kept: backupFiles.length };
+      }
+
+      // Delete old backups
+      const deletePromises = filesToDelete.map(file =>
+        this.deleteFile(file.Key)
+      );
+
+      await Promise.all(deletePromises);
+
+      console.log(`✅ Deleted ${filesToDelete.length} old backups`);
+      return {
+        deleted: filesToDelete.length,
+        kept: backupFiles.length - filesToDelete.length
+      };
+    } catch (error) {
+      console.error('❌ Backup rotation failed:', error);
+      throw error;
+    }
+  }
+
+  // Delete a file from S3
+  async deleteFile(key) {
+    if (!this.enabled) {
+      console.log(`Mock S3 delete: ${key}`);
+      return { success: true };
+    }
+
+    try {
+      await this.s3.deleteObject({
+        Bucket: this.bucket,
+        Key: key
+      }).promise();
+
+      console.log(`🗑️  Deleted: ${key}`);
+      return { success: true, key };
+    } catch (error) {
+      console.error(`❌ Error deleting ${key}:`, error);
+      throw error;
+    }
+  }
+
+  // Restore from backup
+  async getBackupManifest(backupKey) {
+    try {
+      const manifest = await this.downloadData(backupKey);
+      return manifest;
+    } catch (error) {
+      console.error(`❌ Error retrieving backup manifest ${backupKey}:`, error);
+      throw error;
+    }
+  }
+
+  // List available backups
+  async listBackups(limit = 30) {
+    try {
+      const backupsPrefix = awsConfig.folders.backups;
+      const backupFiles = await this.listFiles(backupsPrefix, limit);
+
+      return backupFiles.map(file => ({
+        key: file.Key,
+        size: file.Size,
+        lastModified: file.LastModified,
+        date: file.Key.match(/\d{4}-\d{2}/)?.[0] || 'unknown'
+      }));
+    } catch (error) {
+      console.error('❌ Error listing backups:', error);
       throw error;
     }
   }

@@ -252,6 +252,106 @@ app.post('/export-analytics', async (req, res) => {
   }
 });
 
+// Backup Management Endpoints
+
+// Create backup
+app.post('/backup/create', async (req, res) => {
+  try {
+    const { backupType = 'incremental' } = req.body;
+
+    console.log(`📦 Creating ${backupType} backup...`);
+
+    const result = await s3Manager.createBackup(backupType);
+
+    res.json({
+      success: true,
+      ...result,
+      message: `${backupType} backup created successfully`,
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    console.error('❌ Backup creation error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to create backup',
+      message: error.message
+    });
+  }
+});
+
+// List backups
+app.get('/backup/list', async (req, res) => {
+  try {
+    const { limit = 30 } = req.query;
+
+    const backups = await s3Manager.listBackups(parseInt(limit));
+
+    res.json({
+      success: true,
+      backups,
+      count: backups.length,
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    console.error('❌ List backups error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to list backups',
+      message: error.message
+    });
+  }
+});
+
+// Rotate backups
+app.post('/backup/rotate', async (req, res) => {
+  try {
+    const { daysToKeep = 30 } = req.body;
+
+    console.log(`🗑️  Rotating backups (keeping ${daysToKeep} days)...`);
+
+    const result = await s3Manager.rotateBackups(parseInt(daysToKeep));
+
+    res.json({
+      success: true,
+      deleted: result.deleted,
+      kept: result.kept,
+      message: `Backup rotation completed. Deleted ${result.deleted} old backups.`,
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    console.error('❌ Backup rotation error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to rotate backups',
+      message: error.message
+    });
+  }
+});
+
+// Get backup manifest
+app.get('/backup/:backupKey(*)', async (req, res) => {
+  try {
+    const backupKey = req.params.backupKey;
+
+    console.log(`📋 Retrieving backup manifest: ${backupKey}`);
+
+    const manifest = await s3Manager.getBackupManifest(backupKey);
+
+    res.json({
+      success: true,
+      manifest,
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    console.error('❌ Get backup manifest error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to retrieve backup manifest',
+      message: error.message
+    });
+  }
+});
+
 // S3 data management endpoints
 app.get('/s3/status', async (req, res) => {
   try {
