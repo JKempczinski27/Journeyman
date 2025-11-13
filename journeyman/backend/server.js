@@ -20,18 +20,21 @@ const {
 const DataService = require('./services/dataService');
 const { S3Manager } = require('./config/awsConfig');
 
+// Import monitoring system
+const { initializeMonitoring } = require('./monitoring');
+
 const app = express();
 const PORT = process.env.PORT || 3001;
 
 // Enable trust proxy for rate limiting
 app.set("trust proxy", 1);
 
-// **ADD THIS LINE: Enable trust proxy for rate limiting**
-app.set('trust proxy', 1);
-
 // Initialize services
 const dataService = new DataService();
 const s3Manager = new S3Manager();
+
+// Initialize monitoring system (must be before other middleware)
+initializeMonitoring(app);
 
 // Apply security middleware in correct order
 app.use(securityLogging.requestLogger);
