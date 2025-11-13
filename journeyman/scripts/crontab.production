@@ -1,0 +1,26 @@
+# Journeyman Production Cron Jobs
+# Install with: crontab -u postgres crontab.production
+
+# Backup database daily at 2 AM
+0 2 * * * /app/scripts/db-backup.sh >> /var/log/journeyman/backup.log 2>&1
+
+# Clean up expired sessions every hour
+0 * * * * psql $DATABASE_URL -c "SELECT cleanup_expired_sessions();" >> /var/log/journeyman/cleanup.log 2>&1
+
+# Clean up old audit logs (90 days retention) daily at 3 AM
+0 3 * * * psql $DATABASE_URL -c "SELECT cleanup_old_audit_logs(90);" >> /var/log/journeyman/cleanup.log 2>&1
+
+# Refresh materialized views every 6 hours
+0 */6 * * * psql $DATABASE_URL -c "SELECT refresh_game_statistics();" >> /var/log/journeyman/refresh.log 2>&1
+
+# Database vacuum and analyze weekly on Sunday at 4 AM
+0 4 * * 0 vacuumdb --analyze --verbose $DATABASE_URL >> /var/log/journeyman/vacuum.log 2>&1
+
+# Check database connectivity every 5 minutes (for monitoring)
+*/5 * * * * psql $DATABASE_URL -c "SELECT 1;" > /dev/null 2>&1 || echo "Database connection failed at $(date)" >> /var/log/journeyman/health.log
+
+# Export data retention check daily at 5 AM
+0 5 * * * psql $DATABASE_URL -c "DELETE FROM data_exports WHERE expires_at < NOW();" >> /var/log/journeyman/cleanup.log 2>&1
+
+# Security: Rotate logs monthly on the 1st at 1 AM
+0 1 1 * * find /var/log/journeyman -name "*.log" -mtime +30 -exec gzip {} \; >> /var/log/journeyman/rotation.log 2>&1
