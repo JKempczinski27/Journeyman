@@ -19,6 +19,8 @@ import adobeAnalytics, {
   trackSocialShare,
   trackPlayerRegistration,
   trackGameQuit,
+  trackGameStart,
+  trackGuess,
   trackGameComplete as trackAdobeGameComplete
 } from './utils/adobeAnalytics';
 import ADOBE_CONFIG from './config/adobeConfig';
@@ -188,6 +190,48 @@ export default function App() {
         } else {
             setFeedback('❌ Try again!');
         }
+    };
+
+    const handleFormSubmit = (e) => {
+        e.preventDefault();
+
+        // Validate form fields
+        if (!playerName.trim()) {
+            setFormError('Please enter your name');
+            return;
+        }
+
+        if (!playerEmail.trim()) {
+            setFormError('Please enter your email');
+            return;
+        }
+
+        // Basic email validation
+        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        if (!emailRegex.test(playerEmail)) {
+            setFormError('Please enter a valid email address');
+            return;
+        }
+
+        // Clear any previous errors
+        setFormError('');
+
+        // Track player registration in Adobe Analytics
+        trackPlayerRegistration({
+            name: playerName,
+            email: playerEmail
+        });
+
+        // Set user identity in Adobe Experience Platform
+        setUserIdentity({
+            email: playerEmail,
+            name: playerName
+        });
+
+        console.log('✅ Player registered:', { playerName, playerEmail });
+
+        // Navigate to landing page
+        setPage('landing');
     };
 
     const nextPlayer = () => {
