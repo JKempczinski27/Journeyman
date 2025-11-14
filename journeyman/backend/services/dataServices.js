@@ -59,33 +59,91 @@ class DataService {
     }
   }
 
-  // Save to database
+  // Save to database with deduplication and audit logging
   async saveToDatabase(data) {
-    const query = `
-      INSERT INTO player_sessions (
-        session_id, name, email, game_type, mode, duration_seconds,
-        correct_count, total_guesses, shared_on_social,
-        game_specific_data, created_at, ip_address, user_agent
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `;
+    const client = await pool.connect();
 
-    const values = [
-      data.sessionId,
-      data.name,
-      data.email,
-      data.gameType || 'journeyman',
-      data.mode,
-      data.durationInSeconds,
-      data.correctCount,
-      data.guesses?.length || 0,
-      data.sharedOnSocial,
-      JSON.stringify(data.gameSpecificData || {}),
-      data.timestamp,
-      data.ip,
-      data.userAgent
-    ];
+    try {
+      await client.query('BEGIN');
 
-    return pool.execute(query, values);
+      // Check for duplicate session (idempotency)
+      const duplicateCheck = await client.query(
+        'SELECT id FROM player_sessions WHERE session_id = $1',
+        [data.sessionId]
+      );
+
+      if (duplicateCheck.rows.length > 0) {
+        await client.query('COMMIT');
+        console.log(`⚠️  Duplicate session detected: ${data.sessionId}`);
+        return {
+          insertId: duplicateCheck.rows[0].id,
+          duplicate: true
+        };
+      }
+
+      // Insert player session
+      const query = `
+        INSERT INTO player_sessions (
+          session_id, name, email, game_type, mode, duration_seconds,
+          correct_count, total_guesses, shared_on_social,
+          game_specific_data, created_at, ip_address, user_agent
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+        RETURNING id
+      `;
+
+      const values = [
+        data.sessionId,
+        data.name,
+        data.email,
+        data.gameType || 'journeyman',
+        data.mode,
+        data.durationInSeconds,
+        data.correctCount,
+        data.guesses?.length || 0,
+        data.sharedOnSocial,
+        JSON.stringify(data.gameSpecificData || {}),
+        data.timestamp,
+        data.ip,
+        data.userAgent
+      ];
+
+      const result = await client.query(query, values);
+      const insertId = result.rows[0].id;
+
+      // Add audit log entry
+      await client.query(`
+        INSERT INTO audit_logs (
+          user_id, action, resource_type, resource_id,
+          ip_address, user_agent, request_data, response_status
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+      `, [
+        null, // No user_id for anonymous game sessions
+        'data_collection',
+        'player_session',
+        insertId,
+        data.ip,
+        data.userAgent,
+        JSON.stringify({
+          gameType: data.gameType,
+          mode: data.mode,
+          email: this.hashEmail(data.email) // Store hashed email in audit log
+        }),
+        200
+      ]);
+
+      await client.query('COMMIT');
+
+      return {
+        insertId,
+        duplicate: false
+      };
+    } catch (error) {
+      await client.query('ROLLBACK');
+      console.error('Database save error:', error);
+      throw error;
+    } finally {
+      client.release();
+    }
   }
 
   // S3 Pipeline - multiple upload strategies

@@ -394,6 +394,112 @@ def forbidden_handler(error):
         'message': str(error.description) if hasattr(error, 'description') else 'Access denied'
     }), 403
 
+# Scheduled cleanup jobs
+from apscheduler.schedulers.background import BackgroundScheduler
+from utils.database import Database
+
+def cleanup_expired_sessions():
+    """Clean up expired sessions from database"""
+    try:
+        result = Database.execute_one('SELECT cleanup_expired_sessions()')
+        count = result['cleanup_expired_sessions'] if result else 0
+        print(f"✅ Cleaned up {count} expired sessions")
+        return count
+    except Exception as e:
+        print(f"❌ Error cleaning up sessions: {e}")
+        return 0
+
+def cleanup_old_audit_logs():
+    """Clean up old audit logs (retention: 90 days)"""
+    try:
+        result = Database.execute_one('SELECT cleanup_old_audit_logs(90)')
+        count = result['cleanup_old_audit_logs'] if result else 0
+        print(f"✅ Cleaned up {count} old audit logs")
+        return count
+    except Exception as e:
+        print(f"❌ Error cleaning up audit logs: {e}")
+        return 0
+
+def cleanup_old_query_metrics():
+    """Clean up old query metrics (retention: 30 days)"""
+    try:
+        result = Database.execute_one('SELECT cleanup_old_query_metrics(30)')
+        count = result['cleanup_old_query_metrics'] if result else 0
+        print(f"✅ Cleaned up {count} old query metrics")
+        return count
+    except Exception as e:
+        print(f"❌ Error cleaning up query metrics: {e}")
+        return 0
+
+def refresh_materialized_views():
+    """Refresh materialized views for analytics"""
+    try:
+        Database.execute_query('REFRESH MATERIALIZED VIEW CONCURRENTLY game_statistics')
+        print("✅ Refreshed game_statistics materialized view")
+        return True
+    except Exception as e:
+        print(f"❌ Error refreshing materialized views: {e}")
+        return False
+
+# Initialize scheduler
+scheduler = BackgroundScheduler()
+
+# Schedule cleanup jobs
+if os.getenv('ENABLE_SCHEDULED_JOBS', 'true').lower() == 'true':
+    # Clean up expired sessions daily at midnight
+    scheduler.add_job(
+        func=cleanup_expired_sessions,
+        trigger='cron',
+        hour=0,
+        minute=0,
+        id='cleanup_sessions',
+        name='Clean up expired sessions',
+        replace_existing=True
+    )
+
+    # Clean up old audit logs on first day of month
+    scheduler.add_job(
+        func=cleanup_old_audit_logs,
+        trigger='cron',
+        day=1,
+        hour=1,
+        minute=0,
+        id='cleanup_audit_logs',
+        name='Clean up old audit logs',
+        replace_existing=True
+    )
+
+    # Clean up old query metrics weekly on Sunday
+    scheduler.add_job(
+        func=cleanup_old_query_metrics,
+        trigger='cron',
+        day_of_week='sun',
+        hour=2,
+        minute=0,
+        id='cleanup_query_metrics',
+        name='Clean up old query metrics',
+        replace_existing=True
+    )
+
+    # Refresh materialized views hourly
+    scheduler.add_job(
+        func=refresh_materialized_views,
+        trigger='cron',
+        minute=0,
+        id='refresh_views',
+        name='Refresh materialized views',
+        replace_existing=True
+    )
+
+    scheduler.start()
+    print("✅ Scheduled cleanup jobs initialized")
+else:
+    print("⚠️  Scheduled jobs disabled via ENABLE_SCHEDULED_JOBS environment variable")
+
+# Shutdown scheduler on exit
+import atexit
+atexit.register(lambda: scheduler.shutdown())
+
 if __name__ == '__main__':
     port = int(os.getenv('PORT', 5001))
     print(f"\n{'='*70}")

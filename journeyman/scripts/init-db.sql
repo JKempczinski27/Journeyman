@@ -40,6 +40,26 @@ CREATE TABLE IF NOT EXISTS players (
     metadata JSONB
 );
 
+-- Create player_sessions table (for game session tracking)
+CREATE TABLE IF NOT EXISTS player_sessions (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    session_id VARCHAR(50) UNIQUE NOT NULL,
+    player_id UUID REFERENCES players(id) ON DELETE SET NULL,
+    name VARCHAR(100) NOT NULL,
+    email VARCHAR(255) NOT NULL,
+    game_type VARCHAR(50) NOT NULL,
+    mode VARCHAR(50),
+    duration_seconds INTEGER CHECK (duration_seconds >= 0 AND duration_seconds <= 3600),
+    correct_count INTEGER CHECK (correct_count >= 0 AND correct_count <= 100),
+    total_guesses INTEGER,
+    shared_on_social BOOLEAN DEFAULT FALSE,
+    game_specific_data JSONB,
+    ip_address INET,
+    user_agent TEXT,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
 -- Create game_data table
 CREATE TABLE IF NOT EXISTS game_data (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -109,6 +129,17 @@ CREATE TABLE IF NOT EXISTS data_deletions (
     deletion_data JSONB
 );
 
+-- Create query_metrics table (performance monitoring)
+CREATE TABLE IF NOT EXISTS query_metrics (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    endpoint VARCHAR(255) NOT NULL,
+    query_duration_ms INTEGER NOT NULL,
+    query_type VARCHAR(100),
+    status_code INTEGER,
+    error_message TEXT,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
 -- Create indexes for better query performance
 CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
 CREATE INDEX IF NOT EXISTS idx_users_username ON users(username);
@@ -122,6 +153,22 @@ CREATE INDEX IF NOT EXISTS idx_audit_logs_created_at ON audit_logs(created_at);
 CREATE INDEX IF NOT EXISTS idx_sessions_expire ON sessions(expire);
 CREATE INDEX IF NOT EXISTS idx_data_exports_user_id ON data_exports(user_id);
 CREATE INDEX IF NOT EXISTS idx_data_deletions_email ON data_deletions(email);
+
+-- Additional performance indexes for player_sessions
+CREATE INDEX IF NOT EXISTS idx_player_sessions_email ON player_sessions(email);
+CREATE INDEX IF NOT EXISTS idx_player_sessions_created_at ON player_sessions(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_player_sessions_composite ON player_sessions(game_type, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_player_sessions_player_id ON player_sessions(player_id);
+CREATE INDEX IF NOT EXISTS idx_player_sessions_session_id ON player_sessions(session_id);
+
+-- GIN indexes for JSONB columns (better JSON query performance)
+CREATE INDEX IF NOT EXISTS idx_game_data_stats_gin ON game_data USING GIN (stats);
+CREATE INDEX IF NOT EXISTS idx_players_metadata_gin ON players USING GIN (metadata);
+CREATE INDEX IF NOT EXISTS idx_player_sessions_game_data_gin ON player_sessions USING GIN (game_specific_data);
+
+-- Composite indexes for common analytics queries
+CREATE INDEX IF NOT EXISTS idx_audit_logs_created_at_user ON audit_logs(created_at DESC, user_id);
+CREATE INDEX IF NOT EXISTS idx_query_metrics_endpoint_created ON query_metrics(endpoint, created_at DESC);
 
 -- Create function to update updated_at timestamp
 CREATE OR REPLACE FUNCTION update_updated_at_column()
@@ -146,6 +193,9 @@ CREATE TRIGGER update_game_data_updated_at BEFORE UPDATE ON game_data
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
 CREATE TRIGGER update_user_consents_updated_at BEFORE UPDATE ON user_consents
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+CREATE TRIGGER update_player_sessions_updated_at BEFORE UPDATE ON player_sessions
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
 -- Create view for active users
@@ -190,6 +240,62 @@ BEGIN
     RETURN deleted_count;
 END;
 $$ LANGUAGE plpgsql;
+
+-- Create function for query metrics cleanup (retention policy)
+CREATE OR REPLACE FUNCTION cleanup_old_query_metrics(retention_days INTEGER DEFAULT 30)
+RETURNS INTEGER AS $$
+DECLARE
+    deleted_count INTEGER;
+BEGIN
+    DELETE FROM query_metrics
+    WHERE created_at < CURRENT_TIMESTAMP - (retention_days || ' days')::INTERVAL;
+    GET DIAGNOSTICS deleted_count = ROW_COUNT;
+    RETURN deleted_count;
+    RAISE NOTICE 'Cleaned up % old query metrics records', deleted_count;
+END;
+$$ LANGUAGE plpgsql;
+
+-- Enable pg_cron extension for scheduled tasks (requires superuser)
+CREATE EXTENSION IF NOT EXISTS pg_cron;
+
+-- Schedule materialized view refresh (runs hourly)
+DO $$
+BEGIN
+    -- Remove existing schedule if it exists
+    PERFORM cron.unschedule('refresh-game-stats');
+EXCEPTION
+    WHEN undefined_table THEN
+        RAISE NOTICE 'pg_cron not available, skipping scheduled tasks';
+    WHEN OTHERS THEN
+        NULL;
+END $$;
+
+-- Add scheduled tasks
+DO $$
+BEGIN
+    -- Refresh game statistics materialized view every hour
+    PERFORM cron.schedule('refresh-game-stats', '0 * * * *',
+        'REFRESH MATERIALIZED VIEW CONCURRENTLY game_statistics');
+
+    -- Cleanup expired sessions daily at midnight
+    PERFORM cron.schedule('cleanup-sessions', '0 0 * * *',
+        'SELECT cleanup_expired_sessions()');
+
+    -- Cleanup old audit logs on first day of month
+    PERFORM cron.schedule('cleanup-audit-logs', '0 0 1 * *',
+        'SELECT cleanup_old_audit_logs(90)');
+
+    -- Cleanup old query metrics weekly
+    PERFORM cron.schedule('cleanup-query-metrics', '0 0 * * 0',
+        'SELECT cleanup_old_query_metrics(30)');
+
+    RAISE NOTICE 'Scheduled tasks configured successfully';
+EXCEPTION
+    WHEN undefined_table THEN
+        RAISE NOTICE 'pg_cron not available, skipping scheduled tasks';
+    WHEN OTHERS THEN
+        RAISE NOTICE 'Error setting up scheduled tasks: %', SQLERRM;
+END $$;
 
 -- Insert default admin user (password: Admin123! - CHANGE THIS IN PRODUCTION)
 -- Password hash for 'Admin123!' using bcrypt
