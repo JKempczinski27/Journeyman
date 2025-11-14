@@ -307,11 +307,15 @@ export const trackPageView = (pageName, section) => adobeAnalytics.trackPageView
 export const trackEvent = (eventName, eventData) => adobeAnalytics.trackEvent(eventName, eventData);
 export const trackGameStart = (playerData, gameMode) => adobeAnalytics.trackGameStart(playerData, gameMode);
 export const trackGameComplete = (gameData) => adobeAnalytics.trackGameComplete(gameData);
-export const trackGuess = (playerName, guess, isCorrect, currentPlayer, gameMode) => 
+export const trackGuess = (playerName, guess, isCorrect, currentPlayer, gameMode) =>
   adobeAnalytics.trackGuess(playerName, guess, isCorrect, currentPlayer, gameMode);
-export const trackModeSelection = (playerName, selectedMode) => 
+export const trackModeSelection = (playerName, selectedMode) =>
   adobeAnalytics.trackModeSelection(playerName, selectedMode);
-export const trackSocialShare = (platform, playerName, gameMode) => 
+export const trackSocialShare = (platform, playerName, gameMode) =>
   adobeAnalytics.trackSocialShare(platform, playerName, gameMode);
-export const initializeAnalytics = (reportSuiteId, trackingServer) => 
+export const trackPlayerRegistration = (playerData) =>
+  adobeAnalytics.trackPlayerRegistration(playerData);
+export const trackGameQuit = (playerName, gameMode, reason) =>
+  adobeAnalytics.trackGameQuit(playerName, gameMode, reason);
+export const initializeAnalytics = (reportSuiteId, trackingServer) =>
   adobeAnalytics.initialize(reportSuiteId, trackingServer);
