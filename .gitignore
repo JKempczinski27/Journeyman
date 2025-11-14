@@ -7,6 +7,8 @@ journeyman/backend/data/
 .env
 .env.local
 .env.*.local
+.env.test
+*.env.test
 
 # IDE and editor files
 .vscode/
@@ -28,3 +30,16 @@ yarn-error.log*
 # Test coverage
 coverage/
 .nyc_output/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+env/
+ENV/
+
+# Security test reports
+security-report-*.json
