@@ -1,27 +1,44 @@
 // src/utils/adobeAnalytics.js
 // Adobe Analytics utility functions for Journeyman game
+import { hasAnalyticsConsent } from '../config/oneTrustConfig';
 
 class AdobeAnalytics {
   constructor() {
     this.isInitialized = false;
     this.dataLayer = window.dataLayer || [];
     this.s = window.s || null; // Adobe Analytics object
+    this.consentGranted = false;
   }
 
-  // Initialize Adobe Analytics
+  // Check if analytics consent is granted via OneTrust
+  checkConsent() {
+    this.consentGranted = hasAnalyticsConsent();
+    return this.consentGranted;
+  }
+
+  // Initialize Adobe Analytics (only if consent is granted)
   initialize(reportSuiteId, trackingServer) {
     try {
       if (typeof window !== 'undefined' && !this.isInitialized) {
+        // Check consent before initializing
+        if (!this.checkConsent()) {
+          console.log('Adobe Analytics: Initialization blocked - awaiting consent');
+          return false;
+        }
+
         // Load Adobe Analytics library if not already loaded
         if (!window.s) {
           this.loadAdobeScript(reportSuiteId, trackingServer);
         }
-        
+
         this.isInitialized = true;
         console.log('Adobe Analytics initialized for Journeyman');
+        return true;
       }
+      return this.isInitialized;
     } catch (error) {
       console.error('Failed to initialize Adobe Analytics:', error);
+      return false;
     }
   }
 
@@ -59,31 +76,46 @@ class AdobeAnalytics {
     }
   }
 
-  // Track page views
+  // Track page views (only if consent is granted)
   trackPageView(pageName, section = 'journeyman') {
     try {
+      // Check consent before tracking
+      if (!this.checkConsent()) {
+        console.log('Adobe Analytics: Page view tracking blocked - no consent');
+        return false;
+      }
+
       if (this.s) {
         // Clear previous page variables
         this.s.clearVars();
-        
+
         // Set page tracking variables
         this.s.pageName = pageName;
         this.s.channel = section;
         this.s.server = window.location.hostname;
         this.s.hier1 = `${section}|${pageName}`;
-        
+
         // Send the page view
         this.s.t();
         console.log(`Adobe Analytics: Page view tracked - ${pageName}`);
+        return true;
       }
+      return false;
     } catch (error) {
       console.error('Failed to track page view:', error);
+      return false;
     }
   }
 
-  // Track custom events
+  // Track custom events (only if consent is granted)
   trackEvent(eventName, eventData = {}) {
     try {
+      // Check consent before tracking
+      if (!this.checkConsent()) {
+        console.log(`Adobe Analytics: Event tracking blocked - no consent (${eventName})`);
+        return false;
+      }
+
       if (this.s) {
         // Map common events to Adobe Analytics events
         const eventMappings = {
@@ -123,9 +155,12 @@ class AdobeAnalytics {
         // Send the event
         this.s.tl(true, 'o', eventName);
         console.log(`Adobe Analytics: Event tracked - ${eventName}`, eventData);
+        return true;
       }
+      return false;
     } catch (error) {
       console.error('Failed to track event:', error);
+      return false;
     }
   }
 

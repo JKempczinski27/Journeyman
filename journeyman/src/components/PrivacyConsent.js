@@ -18,10 +18,13 @@ import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import SecurityIcon from '@mui/icons-material/Security';
 import DataUsageIcon from '@mui/icons-material/DataUsage';
 import { useAdobeExperiencePlatform } from '../hooks/useAdobeExperiencePlatform';
+import useOneTrust from '../hooks/useOneTrust';
 
 const PrivacyConsent = () => {
   const [open, setOpen] = useState(false);
   const [hasShownConsent, setHasShownConsent] = useState(false);
+
+  // Adobe Experience Platform hook
   const {
     grantConsent,
     denyConsent,
@@ -30,8 +33,37 @@ const PrivacyConsent = () => {
     loading
   } = useAdobeExperiencePlatform();
 
+  // OneTrust hook with consent update callback
+  const {
+    isOneTrustLoaded,
+    isInitialized: oneTrustInitialized,
+    analyticsConsent: oneTrustAnalyticsConsent,
+    openSettings: openOneTrustSettings,
+    syncConsent
+  } = useOneTrust({
+    autoInit: true,
+    syncToBackend: true,
+    onConsentUpdate: (consentData) => {
+      console.log('OneTrust consent updated:', consentData);
+      // When OneTrust analytics consent is granted, also grant Adobe consent
+      if (consentData.analyticsConsent && !consentGiven) {
+        grantConsent();
+      } else if (!consentData.analyticsConsent && consentGiven) {
+        denyConsent();
+      }
+    }
+  });
+
   useEffect(() => {
-    // Check if we've already shown consent or if user has made a choice
+    // If OneTrust is enabled and loaded, let it handle the consent banner
+    // Otherwise, show our custom dialog
+    if (oneTrustInitialized && isOneTrustLoaded) {
+      console.log('OneTrust is managing consent');
+      // OneTrust will show its own banner, so we don't show ours
+      return;
+    }
+
+    // Fallback to custom consent dialog if OneTrust is not available
     const hasShownBefore = localStorage.getItem('privacy_consent_shown');
     const existingConsent = localStorage.getItem('adobe_consent');
 
@@ -40,16 +72,18 @@ const PrivacyConsent = () => {
     // 2. No consent has been given
     // 3. We haven't shown the dialog before in this session
     // 4. No existing consent choice exists
+    // 5. OneTrust is not managing consent
     if (isInitialized &&
         !consentGiven &&
         !hasShownBefore &&
         !existingConsent &&
-        !loading) {
+        !loading &&
+        !oneTrustInitialized) {
       setOpen(true);
       setHasShownConsent(true);
       localStorage.setItem('privacy_consent_shown', 'true');
     }
-  }, [isInitialized, consentGiven, loading]);
+  }, [isInitialized, consentGiven, loading, oneTrustInitialized, isOneTrustLoaded]);
 
   const handleAccept = async () => {
     try {
@@ -87,9 +121,15 @@ const PrivacyConsent = () => {
   };
 
   const handleCustomizePreferences = () => {
-    // For now, just show the full options
-    // In a real implementation, you might have granular controls
-    console.log('🔧 User wants to customize privacy preferences');
+    // If OneTrust is loaded, open OneTrust preference center
+    if (oneTrustInitialized && isOneTrustLoaded) {
+      openOneTrustSettings();
+      setOpen(false);
+    } else {
+      // For now, just show the full options
+      // In a real implementation, you might have granular controls
+      console.log('🔧 User wants to customize privacy preferences');
+    }
   };
 
   // Don't render if AEP is not enabled or not initialized
@@ -124,8 +164,8 @@ const PrivacyConsent = () => {
 
       <DialogContent sx={{ pt: 1 }}>
         <Typography variant="body1" paragraph>
-          We use Adobe Experience Platform to enhance your Journeyman gaming experience
-          through analytics and personalization.
+          We use {oneTrustInitialized ? 'OneTrust and ' : ''}Adobe Experience Platform to enhance your Journeyman gaming experience
+          through analytics and personalization{oneTrustInitialized ? ', with enterprise-grade privacy compliance' : ''}.
         </Typography>
 
         <Box sx={{ mb: 3 }}>
