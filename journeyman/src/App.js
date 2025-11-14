@@ -234,6 +234,19 @@ export default function App() {
         setPage('landing');
     };
 
+    const handleModeSelection = (mode) => {
+        const isChallenge = mode === 'challenge';
+        setChallengeMode(isChallenge);
+
+        // Track mode selection in Adobe Analytics
+        trackModeSelection(playerName, mode);
+
+        console.log(`✅ Mode selected: ${mode}`);
+
+        // Navigate to game page
+        setPage('game');
+    };
+
     const nextPlayer = () => {
         // Track next player event
         adobeAnalytics.trackEvent('next_player', {
