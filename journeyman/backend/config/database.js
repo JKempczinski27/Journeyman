@@ -77,42 +77,52 @@ const dbConfig = {
 // Select appropriate configuration
 let poolConfig;
 
+// Check if using PgBouncer (connection pooler)
+const usePgBouncer = process.env.USE_PGBOUNCER === 'true';
+
 if (process.env.DATABASE_URL) {
   // If DATABASE_URL is provided (Railway production or manual setup)
   poolConfig = {
     connectionString: process.env.DATABASE_URL,
     ssl: getSSLConfig(),
     // Production connection pool settings
-    max: parseInt(process.env.DB_POOL_MAX) || 20,
+    // When using PgBouncer, we can increase max connections significantly
+    max: usePgBouncer
+      ? parseInt(process.env.DB_POOL_MAX) || 100  // PgBouncer handles pooling
+      : parseInt(process.env.DB_POOL_MAX) || 20,   // Direct connection
     min: parseInt(process.env.DB_POOL_MIN) || 5,
-    idleTimeoutMillis: 30000,
+    idleTimeoutMillis: usePgBouncer ? 10000 : 30000, // Shorter idle timeout with PgBouncer
     connectionTimeoutMillis: 10000,
     // Retry configuration
     maxUses: 7500, // Connections are recycled after this many uses
     allowExitOnIdle: false,
     // Statement timeout to prevent long-running queries
-    statement_timeout: 30000,
-    query_timeout: 30000,
+    statement_timeout: parseInt(process.env.DB_STATEMENT_TIMEOUT) || 30000,
+    query_timeout: parseInt(process.env.DB_QUERY_TIMEOUT) || 30000,
+    // Application name for monitoring
+    application_name: process.env.APP_NAME || 'journeyman-backend'
   };
 } else if (isProduction || isRailway) {
   // Production environment without DATABASE_URL
   poolConfig = {
     ...dbConfig.production,
-    max: 20,
+    max: usePgBouncer ? 100 : 20,
     min: 5,
-    idleTimeoutMillis: 30000,
+    idleTimeoutMillis: usePgBouncer ? 10000 : 30000,
     connectionTimeoutMillis: 10000,
     statement_timeout: 30000,
     query_timeout: 30000,
+    application_name: process.env.APP_NAME || 'journeyman-backend'
   };
 } else {
   // Local development
   poolConfig = {
     ...dbConfig.development,
-    max: 5,
-    min: 1,
+    max: 10,  // Increased for local testing
+    min: 2,
     idleTimeoutMillis: 30000,
     connectionTimeoutMillis: 2000,
+    application_name: 'journeyman-dev'
   };
 }
 

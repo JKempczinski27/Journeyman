@@ -1,0 +1,21 @@
+FROM pgbouncer/pgbouncer:latest
+
+# Copy configuration files
+COPY pgbouncer.ini /etc/pgbouncer/pgbouncer.ini
+COPY userlist.txt /etc/pgbouncer/userlist.txt
+
+# Set proper permissions
+RUN chmod 644 /etc/pgbouncer/pgbouncer.ini && \
+    chmod 600 /etc/pgbouncer/userlist.txt
+
+# Expose PgBouncer port
+EXPOSE 6432
+
+# Health check
+HEALTHCHECK --interval=10s --timeout=3s --retries=3 \
+  CMD psql -h 127.0.0.1 -p 6432 -U pgbouncer pgbouncer -c "SHOW POOLS" || exit 1
+
+# Run as pgbouncer user
+USER pgbouncer
+
+CMD ["/usr/bin/pgbouncer", "/etc/pgbouncer/pgbouncer.ini"]

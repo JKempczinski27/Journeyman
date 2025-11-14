@@ -32,23 +32,52 @@ spec:
             secretKeyRef:
               name: app-secrets
               key: DATABASE_URL
-        - name: REDIS_URL
+        - name: REDIS_HOST
           valueFrom:
             secretKeyRef:
               name: app-secrets
-              key: REDIS_URL
+              key: REDIS_HOST
+        - name: REDIS_PORT
+          value: "6379"
+        - name: REDIS_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: app-secrets
+              key: REDIS_PASSWORD
+        - name: REDIS_CACHE_DB
+          value: "1"
+        - name: REDIS_QUEUE_DB
+          value: "2"
+        - name: REDIS_PUBSUB_DB
+          value: "3"
+        - name: REDIS_CLUSTER_ENABLED
+          value: "false"
         - name: ADMIN_TOKEN
           valueFrom:
             secretKeyRef:
               name: app-secrets
               key: ADMIN_TOKEN
+        - name: USE_PGBOUNCER
+          value: "true"
+        - name: DB_POOL_MAX
+          value: "100"
+        - name: DB_POOL_MIN
+          value: "10"
+        - name: DB_STATEMENT_TIMEOUT
+          value: "30000"
+        - name: DB_QUERY_TIMEOUT
+          value: "30000"
+        - name: CACHE_VERSION
+          value: "v1"
+        - name: APP_NAME
+          value: "journeyman-backend"
         resources:
           requests:
-            memory: "256Mi"
-            cpu: "200m"
-          limits:
             memory: "512Mi"
             cpu: "500m"
+          limits:
+            memory: "2Gi"
+            cpu: "2000m"
         readinessProbe:
           httpGet:
             path: /health
