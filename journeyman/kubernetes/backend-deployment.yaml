@@ -51,15 +51,17 @@ spec:
             cpu: "500m"
         readinessProbe:
           httpGet:
-            path: /health
+            path: /health/ready
             port: 3001
           initialDelaySeconds: 10
           periodSeconds: 15
           timeoutSeconds: 5
+          failureThreshold: 3
         livenessProbe:
           httpGet:
-            path: /health
+            path: /health/live
             port: 3001
           initialDelaySeconds: 30
           periodSeconds: 30
           timeoutSeconds: 5
+          failureThreshold: 3
